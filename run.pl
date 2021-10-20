@@ -21,7 +21,7 @@ user:file_search_path(library, lib).
 :- use_module(library(semweb/rdf_persistency)).
 :- use_module(library(http/http_server)).
 
-:- initialization(main).
+:- initialization(call_cleanup(main, set_prolog_flag(verbose, silent))).
 
 :- http_handler(root(.),
                 http_redirect(moved, location_by_id(home_page)),
@@ -53,8 +53,7 @@ main :-
   -> call(Goal),
      retractall(after_load_goal(_))
   ; true
-  ),
-  set_prolog_flag(verbose, silent).
+  ).
 
 :- multifile prolog:message/3.
 
