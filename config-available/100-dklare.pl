@@ -19,4 +19,8 @@ limitations under the License.
 /** <module> dklare
 */
 
-:- use_module(library(test)).
+:- use_module(library(semweb/rdf_db), [rdf_register_prefix/2]).
+:- rdf_register_prefix(d, 'http://dklare.org/2021/10/dklare#').
+
+:- use_module(library(kb)).
+:- cp_after_load(load_knowledge).

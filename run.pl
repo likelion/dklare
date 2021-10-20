@@ -34,12 +34,26 @@ home_page(_) :-
     [ h2('dklare standalone') ]
   ).
 
+:- meta_predicate user:cp_after_load(0).
+:- dynamic after_load_goal/1.
+
+user:cp_after_load(Goal) :-
+  ( after_load_goal(Goal)
+  -> true
+  ; assert(after_load_goal(Goal))
+  ).
+
 main :-
   print_message(banner, dklare),
   rdf_attach_db('RDF-store', []),
   expand_file_name('config-available/*.pl', Configs),
   maplist(use_module, Configs),
   http_server([port(3020)]),
+  ( after_load_goal(Goal)
+  -> call(Goal),
+     retractall(after_load_goal(_))
+  ; true
+  ),
   set_prolog_flag(verbose, silent).
 
 :- multifile prolog:message/3.
