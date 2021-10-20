@@ -35,7 +35,19 @@ home_page(_) :-
   ).
 
 main :-
+  print_message(banner, dklare),
   rdf_attach_db('RDF-store', []),
   expand_file_name('config-available/*.pl', Configs),
   maplist(use_module, Configs),
-  http_server([port(3020)]).
+  http_server([port(3020)]),
+  set_prolog_flag(verbose, silent).
+
+:- multifile prolog:message/3.
+
+prolog:message(dklare) -->
+  ['        ____   __
+   ____/ / /__/ /___ _________
+  / __  / //_/ / __ `/ ___/ _ \\
+ / /_/ / ,< / / /_/ / /  /  __/
+ \\__,_/_/|_/_/\\__,_/_/   \\___/
+' ] .
