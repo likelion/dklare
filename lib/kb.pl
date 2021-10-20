@@ -20,18 +20,22 @@ limitations under the License.
 :- use_module(library(semweb/turtle)).
 
 load_knowledge :-
-  uuid(UUID),
-  atom_concat('$manifest-', UUID, ManifestGraph),
-  rdf_load('knowledge/Manifest.ttl', [graph(ManifestGraph)]),
-  call_cleanup(
-    forall(
-      rdf(File, rdf:type, d:'KnowledgeFile', ManifestGraph),
-      ( ignore(rdf(File, d:graph, ^^(GraphS, xsd:string), ManifestGraph)),
-        atom_concat('knowledge/', File, Path),
-        atom_string(Graph, GraphS),
-        atom_concat('_:', File, AnonPrefix),
-        rdf_load(Path, [graph(Graph),multifile(true),anon_prefix(AnonPrefix)])
-      )
-    ),
-    rdf_unload_graph(ManifestGraph)
+  catch((
+    uuid(UUID),
+    atom_concat('$manifest-', UUID, ManifestGraph),
+    rdf_load('knowledge/Manifest.ttl', [graph(ManifestGraph)]),
+    call_cleanup(
+      forall(
+        rdf(File, rdf:type, d:'KnowledgeFile', ManifestGraph),
+        ( ignore(rdf(File, d:graph, ^^(GraphS, xsd:string), ManifestGraph)),
+          atom_concat('knowledge/', File, Path),
+          atom_string(Graph, GraphS),
+          atom_concat('_:', File, AnonPrefix),
+          rdf_load(Path, [graph(Graph),multifile(true),anon_prefix(AnonPrefix)])
+        )
+      ),
+      rdf_unload_graph(ManifestGraph)
+    )),
+    _,
+    true
   ).
