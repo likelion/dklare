@@ -1,0 +1,6 @@
+/* vim: set filetype=prolog : */
+%	Name the outside world can use to contact me
+setting(http:public_host, 'localhost').
+
+%	Port on the public server
+setting(http:public_port, 3020).
