@@ -44,6 +44,7 @@ user:cp_after_load(Goal) :-
   ).
 
 main :-
+  debug(pengine(debug)),
   print_message(banner, dklare),
   consult('settings.db'),
   rdf_attach_db('RDF-store', []),

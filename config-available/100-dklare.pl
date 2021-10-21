@@ -19,8 +19,19 @@ limitations under the License.
 /** <module> dklare
 */
 
+:- multifile prolog:message_prefix_hook/2.
+
+prolog:message_prefix_hook(thread, Prefix) :-
+  get_time(Now),
+  format_time(atom(Prefix), '[%H:%M:%S.%f]', Now, posix).
+
 :- use_module(library(semweb/rdf_db), [rdf_register_prefix/2]).
 :- rdf_register_prefix(d, 'http://dklare.org/2021/10/dklare#').
 
 :- use_module(library(kb)).
-:- cp_after_load(load_knowledge).
+:- cp_after_load(
+     ( broadcast(dklare(loading)),
+       load_knowledge,
+       broadcast(dklare(loaded))
+     )
+   ).
