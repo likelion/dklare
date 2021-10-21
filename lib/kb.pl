@@ -27,7 +27,7 @@ load_knowledge :-
   catch((
     uuid(UUID),
     atom_concat('$', UUID, ManifestGraph),
-    rdf_load(Manifest, [graph(ManifestGraph)]),
+    rdf_load(Manifest, [graph(ManifestGraph),register_namespaces(true)]),
     call_cleanup(
       findall(Path,
         ( rdf(File, rdf:type, d:'KnowledgeFile', ManifestGraph),
