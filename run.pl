@@ -45,6 +45,7 @@ user:cp_after_load(Goal) :-
 
 main :-
   print_message(banner, dklare),
+  consult('settings.db'),
   rdf_attach_db('RDF-store', []),
   expand_file_name('config-available/*.pl', Configs),
   maplist(use_module, Configs),
