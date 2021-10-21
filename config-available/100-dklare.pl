@@ -37,3 +37,5 @@ prolog:message_prefix_hook(thread, Prefix) :-
        broadcast(dklare(loaded))
      )
    ).
+
+:- setting(dklare:knowledge_path, atom, 'knowledge/', 'Path to initial knowledge files').

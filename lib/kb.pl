@@ -18,24 +18,42 @@ limitations under the License.
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(semweb/turtle)).
+:- use_module(library(settings)).
 
 load_knowledge :-
+  setting(dklare:knowledge_path, Prefix0),
+  ensure_slash(Prefix0, Prefix),
+  atom_concat(Prefix, 'Manifest.ttl', Manifest),
   catch((
     uuid(UUID),
-    atom_concat('$manifest-', UUID, ManifestGraph),
-    rdf_load('knowledge/Manifest.ttl', [graph(ManifestGraph)]),
+    atom_concat('$', UUID, ManifestGraph),
+    rdf_load(Manifest, [graph(ManifestGraph)]),
     call_cleanup(
-      forall(
-        rdf(File, rdf:type, d:'KnowledgeFile', ManifestGraph),
-        ( ignore(rdf(File, d:graph, ^^(GraphS, xsd:string), ManifestGraph)),
-          atom_concat('knowledge/', File, Path),
+      findall(Path,
+        ( rdf(File, rdf:type, d:'KnowledgeFile', ManifestGraph),
+          ignore(rdf(File, d:graph, ^^(GraphS, xsd:string), ManifestGraph)),
+          atom_concat(Prefix, File, Path),
           atom_string(Graph, GraphS),
           atom_concat('_:', File, AnonPrefix),
           rdf_load(Path, [graph(Graph),multifile(true),anon_prefix(AnonPrefix)])
-        )
+        ),
+        Paths
       ),
       rdf_unload_graph(ManifestGraph)
+    ),
+    atom_concat(Prefix, '*', Search),
+    expand_file_name(Search, Files),
+    subtract(Files, [Manifest|Paths], Rest),
+    forall(
+      member(Path, Rest),
+      rdf_load(Path)
     )),
     _,
     true
+  ).
+
+ensure_slash(Dir0, Dir) :-
+  ( sub_atom(Dir0, _, _, 0, /)
+  -> Dir = Dir0
+  ; atom_concat(Dir0, /, Dir)
   ).

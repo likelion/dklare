@@ -46,11 +46,12 @@ user:cp_after_load(Goal) :-
 main :-
   print_message(banner, dklare),
   debug(setting),
-  consult('settings.db'),
+  load_settings('settings.db'),
   rdf_attach_db('RDF-store', []),
   expand_file_name('config-available/*.pl', Configs),
   maplist(use_module, Configs),
-  http_server([port(3020)]),
+  setting(http:public_port, Port),
+  http_server([port(Port)]),
   ( after_load_goal(Goal)
   -> call(Goal),
      retractall(after_load_goal(_))
