@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-:- module(tabled_rdfs, [rdfs/3]).
+:- module(rdfs11, [rdfs/3]).
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(increval)).
@@ -92,12 +92,12 @@ rdfs_warm :-
   Wall is T1-T0,
   CPU is CPU1-CPU0,
   aggregate_all(sum(S), (
-    current_table(tabled_rdfs:A, T),
+    current_table(rdfs11:A, T),
     A =.. [rdfs,_,_,_],
     trie_property(T, value_count(S))
   ), Triples),
   aggregate_all(sum(S), (
-    current_table(tabled_rdfs:A, T),
+    current_table(rdfs11:A, T),
     A =.. [rdfs,_,_,_],
     trie_property(T, size(S))
   ), Bytes),
@@ -114,3 +114,46 @@ prolog:message(inferred(Triples, Bytes)) -->
 
 prolog:message(warmed(Wall, CPU)) -->
   [ 'Warmed RDFS in ~3f sec. (~3f sec. on CPU)'-[Wall, CPU] ].
+
+% -- DEBUG
+
+rdfst :-
+  forall((
+      current_table(rdfs11:A, T),
+      trie_property(T, size(S))
+    ), (
+      once(trie_gen(T, _, _)),
+      debug(_, '~w: ~w', [A,S]),
+      forall(trie_gen(T, K, V), debug(_, '  ~w => ~w', [K,V]))
+    ; true
+    )
+  ).
+
+rdfstt :-
+  forall((
+      current_table(rdfs11:A, T),
+      trie_property(T, size(S))
+    ), (
+      once(trie_gen(T, _, _)),
+      debug(_, '~w: ~w', [A,S]),
+      aggregate_all(count, (
+        trie_gen(T, _, _)
+      ), Countr),
+      debug(_, '  ~w', [Countr])
+    ; true
+    )
+  ).
+
+rdfss :-
+  aggregate_all(sum(S), (
+    current_table(rdfs11:A, T),
+    A =.. [rdfs,_,_,_],
+    trie_property(T, value_count(S))
+  ), Countr),
+  aggregate_all(sum(S), (
+    current_table(rdfs11:A, T),
+    A =.. [rdfs,_,_,_],
+    trie_property(T, size(S)),
+    debug(_, 'table ~w: ~D', [A,S])
+  ), RDFR),
+  debug(_, 'RDFS: ~D inferred triples (~D bytes)', [Countr,RDFR]).
