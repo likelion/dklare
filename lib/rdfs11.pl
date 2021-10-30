@@ -14,15 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-:- module(rdfs11, [rdfs/3]).
+:- module(rdfs11, [ rdfs/3,
+                    rdfs_only/3
+                  ]).
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(increval)).
 
-:- table rdfs/3 as monotonic.
+:- table rdfs_only/3 as monotonic.
 :- dynamic rdfq/3 as monotonic.
 
 :- rdf_meta rdfs(r,r,o),
+            rdfs_only(r,r,o),
+            rdfi(r,r,o),
             rdfq(r,r,o).
 
 :- listen(
@@ -38,122 +42,145 @@ rdf_notify(assert(S, P, O, _)) :-
 rdf_notify(retract(S, P, O, _)) :-
   incr_invalidate_calls(rdfq(S, P, O)).
 
-rdfs(P, rdf:type, rdf:'Property') :-                      % rdfs1
+rdfs(S, P, O) :-
+  rdf(S, P, O).
+rdfs(S, P, O) :-
+  rdfs_only(S, P, O).
+
+rdfs_only(S, P, O) :-
+  rdfi(S, P, O),
+  \+ rdf(S, P, O).
+
+rdfi(P, rdf:type, rdf:'Property') :-                      % rdfs1
   rdfq(_, P, _).
-rdfs(X, rdf:type, C) :-                                   % rdfs2
+rdfi(X, rdf:type, C) :-                                   % rdfs2
   rdfq(P, rdfs:domain, C),
+  \+ rdf_global_id(rdfs:'Resource', C),
+  \+ rdf_global_id(rdf:'List', C),
   rdfq(X, P, _).
-rdfs(Y, rdf:type, C) :-                                   % rdfs3
+rdfi(Y, rdf:type, C) :-                                   % rdfs3
   rdfq(P, rdfs:range, C),
-  rdfq(_, P, Y).
-%rdfs(X, rdf:type, rdfs:'Resource') :-                     % rdfs4a
+  \+ rdf_global_id(rdfs:'Resource', C),
+  \+ rdf_global_id(rdf:'List', C),
+  rdfq(_, P, Y),
+  atom(Y).
+%rdfi(X, rdf:type, rdfs:'Resource') :-                     % rdfs4a
 %  rdfq(X, _, _).
-%rdfs(Y, rdf:type, rdfs:'Resource') :-                     % rdfs4b
-%  rdfq(_, _, Y).
-rdfs(P, rdfs:subPropertyOf, R) :-                         % rdfs5
+%rdfi(Y, rdf:type, rdfs:'Resource') :-                     % rdfs4b
+%  rdfq(_, _, Y),
+%  atom(Y).
+rdfi(P, rdfs:subPropertyOf, R) :-                         % rdfs5
   rdfq(P, rdfs:subPropertyOf, Q),
   rdfq(Q, rdfs:subPropertyOf, R).
-%rdfs(P, rdfs:subPropertyOf, P) :-                         % rdfs6
+%rdfi(P, rdfs:subPropertyOf, P) :-                         % rdfs6
 %  rdfq(P, rdf:type, rdf:'Property').
-rdfs(X, Q, Y) :-                                          % rdfs7
+rdfi(X, Q, Y) :-                                          % rdfs7
   rdfq(P, rdfs:subPropertyOf, Q),
+  \+ rdf_global_id(rdfs:seeAlso, Q),
   rdfq(X, P, Y).
-%rdfs(C, rdfs:subClassOf, rdfs:'Resource') :-              % rdfs8
+%rdfi(C, rdfs:subClassOf, rdfs:'Resource') :-              % rdfs8
 %  rdfq(C, rdf:type, rdfs:'Class').
-rdfs(X, rdf:type, D) :-                                   % rdfs9
+rdfi(X, rdf:type, D) :-                                   % rdfs9
   rdfq(C, rdfs:subClassOf, D),
+  \+ rdf_global_id(rdfs:'Resource', D),
+  \+ rdf_global_id(rdf:'List', D),
   rdfq(X, rdf:type, C).
-%rdfs(C, rdfs:subClassOf, C) :-                            % rdfs10
+%rdfi(C, rdfs:subClassOf, C) :-                            % rdfs10
 %   rdfq(C, rdf:type, rdfs:'Class').
-rdfs(C, rdfs:subClassOf, E) :-                            % rdfs11
+rdfi(C, rdfs:subClassOf, E) :-                            % rdfs11
   rdfq(C, rdfs:subClassOf, D),
-  rdfq(D, rdfs:subClassOf, E).
- rdfs(P, rdfs:subPropertyOf, rdfs:member) :-              % rdfs12
-   rdfq(P, rdf:type, rdfs:'ContainerMembershipProperty').
- rdfs(X, rdfs:subClassOf, rdfs:'Literal') :-              % rdfs13
-   rdfq(X, rdf:type, rdfs:'Datatype').
+  rdfq(D, rdfs:subClassOf, E),
+  \+ rdf_global_id(rdfs:'Resource', E),
+  \+ rdf_global_id(rdf:'List', E).
+rdfi(P, rdfs:subPropertyOf, rdfs:member) :-               % rdfs12
+  rdfq(P, rdf:type, rdfs:'ContainerMembershipProperty').
+rdfi(X, rdfs:subClassOf, rdfs:'Literal') :-               % rdfs13
+  rdfq(X, rdf:type, rdfs:'Datatype').
 
 rdfq(S, P, O) :-
-  rdfs(S, P, O).
+  rdfs_only(S, P, O).
 rdfq(S, P, O) :-
   rdf(S, P, O).
 
 rdfs_warm :-
   print_message(information, warming),
-  get_time(T0),
-  statistics(cputime, CPU0),
-  ignore((
-    rdfs(_, rdf:type, _),
-    rdfs(_, rdfs:subClassOf, _),
-    rdfs(_, rdfs:subPropertyOf, _)
+  time(ignore(rdfs_only(_, _, _))),
+  Ts = count(0),
+  Vs = count(0),
+  Bs = count(0),
+  forall((
+    current_table(rdfs11:A, T),
+    trie_property(T, value_count(C)),
+    C > 0,
+    ( A =@= rdfs_only(_,_,_)
+    -> nb_setarg(1, Ts, C)
+    ; true
+    ),
+    trie_property(T, size(B))
+  ),(
+    arg(1, Vs, V0),
+    plus(V0, C, V1),
+    nb_setarg(1, Vs, V1),
+    arg(1, Bs, B0),
+    plus(B0, B, B1),
+    nb_setarg(1, Bs, B1)
   )),
-  statistics(cputime, CPU1),
-  get_time(T1),
-  Wall is T1-T0,
-  CPU is CPU1-CPU0,
-  aggregate_all(sum(S), (
-    current_table(rdfs11:A, T),
-    A =.. [rdfs,_,_,_],
-    trie_property(T, value_count(S))
-  ), Triples),
-  aggregate_all(sum(S), (
-    current_table(rdfs11:A, T),
-    A =.. [rdfs,_,_,_],
-    trie_property(T, size(S))
-  ), Bytes),
-  print_message(information, inferred(Triples, Bytes)),
-  print_message(information, warmed(Wall, CPU)).
+  arg(1, Ts, Triples),
+  arg(1, Vs, Variants),
+  arg(1, Bs, Bytes),
+  print_message(information, inferred(Triples, Variants, Bytes)).
 
 :- multifile prolog:message/3.
 
 prolog:message(warming) -->
   [ 'Warming RDFS...' ].
 
-prolog:message(inferred(Triples, Bytes)) -->
-  [ 'Inferred ~D triples (~D bytes)'-[Triples, Bytes] ].
-
-prolog:message(warmed(Wall, CPU)) -->
-  [ 'Warmed RDFS in ~3f sec. (~3f sec. on CPU)'-[Wall, CPU] ].
+prolog:message(inferred(Triples, Variants, Bytes)) -->
+  [ 'Inferred ~D triples (~D variants) [~D bytes]'-[Triples, Variants, Bytes] ].
 
 % -- DEBUG
 
 rdfst :-
   forall((
       current_table(rdfs11:A, T),
-      trie_property(T, size(S))
+      trie_property(T, size(S)),
+      trie_property(T, value_count(C)),
+      C > 0
     ), (
-      once(trie_gen(T, _, _)),
-      debug(_, '~w: ~w', [A,S]),
-      forall(trie_gen(T, K, V), debug(_, '  ~w => ~w', [K,V]))
+      shorten(A, A2),
+      debug(_, '~w: ~w triples (~D bytes)', [A2,C,S]),
+      forall(
+        trie_gen(T, K),
+        ( shorten(K, K2),
+          debug(_, '  ~w', [K2])
+        )
+      )
     ; true
     )
   ).
 
-rdfstt :-
+rdfsc :-
   forall((
-      current_table(rdfs11:A, T),
-      trie_property(T, size(S))
-    ), (
-      once(trie_gen(T, _, _)),
-      debug(_, '~w: ~w', [A,S]),
-      aggregate_all(count, (
-        trie_gen(T, _, _)
-      ), Countr),
-      debug(_, '  ~w', [Countr])
-    ; true
-    )
-  ).
-
-rdfss :-
-  aggregate_all(sum(S), (
     current_table(rdfs11:A, T),
-    A =.. [rdfs,_,_,_],
-    trie_property(T, value_count(S))
-  ), Countr),
-  aggregate_all(sum(S), (
-    current_table(rdfs11:A, T),
-    A =.. [rdfs,_,_,_],
     trie_property(T, size(S)),
-    debug(_, 'table ~w: ~D', [A,S])
-  ), RDFR),
-  debug(_, 'RDFS: ~D inferred triples (~D bytes)', [Countr,RDFR]).
+    trie_property(T, value_count(C)),
+    C > 0
+  ),(
+    shorten(A, A2),
+    debug(_, '~w:', [A2]),
+    debug(_, '  ~w triples (~D bytes)', [C,S])
+  )).
+
+shorten(T, T2) :-
+  T =.. [F|A],
+  maplist(shorten_iri, A, A2),
+  T2 =.. [F|A2].
+
+shorten_iri(V, V) :-
+  var(V), !.
+shorten_iri(S^^_, S) :- !.
+shorten_iri(S@_, S) :- !.
+shorten_iri(I, I2) :-
+  atom(I), !,
+  rdf_global_id(I2, I).
+shorten_iri(I, I).
