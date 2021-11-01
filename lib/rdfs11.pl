@@ -55,20 +55,16 @@ rdfi(P, rdf:type, rdf:'Property') :-                      % rdfs1
   rdfq(_, P, _).
 rdfi(X, rdf:type, C) :-                                   % rdfs2
   rdfq(P, rdfs:domain, C),
-  \+ rdf_global_id(rdfs:'Resource', C),
-  \+ rdf_global_id(rdf:'List', C),
   rdfq(X, P, _).
 rdfi(Y, rdf:type, C) :-                                   % rdfs3
   rdfq(P, rdfs:range, C),
-  \+ rdf_global_id(rdfs:'Resource', C),
-  \+ rdf_global_id(rdf:'List', C),
   rdfq(_, P, Y),
   atom(Y).
-%rdfi(X, rdf:type, rdfs:'Resource') :-                     % rdfs4a
-%  rdfq(X, _, _).
-%rdfi(Y, rdf:type, rdfs:'Resource') :-                     % rdfs4b
-%  rdfq(_, _, Y),
-%  atom(Y).
+rdfi(X, rdf:type, rdfs:'Resource') :-                     % rdfs4a
+  rdfq(X, _, _).
+rdfi(Y, rdf:type, rdfs:'Resource') :-                     % rdfs4b
+  rdfq(_, _, Y),
+  atom(Y).
 rdfi(P, rdfs:subPropertyOf, R) :-                         % rdfs5
   rdfq(P, rdfs:subPropertyOf, Q),
   rdfq(Q, rdfs:subPropertyOf, R).
@@ -76,22 +72,17 @@ rdfi(P, rdfs:subPropertyOf, R) :-                         % rdfs5
 %  rdfq(P, rdf:type, rdf:'Property').
 rdfi(X, Q, Y) :-                                          % rdfs7
   rdfq(P, rdfs:subPropertyOf, Q),
-  \+ rdf_global_id(rdfs:seeAlso, Q),
   rdfq(X, P, Y).
-%rdfi(C, rdfs:subClassOf, rdfs:'Resource') :-              % rdfs8
-%  rdfq(C, rdf:type, rdfs:'Class').
+rdfi(C, rdfs:subClassOf, rdfs:'Resource') :-              % rdfs8
+  rdfq(C, rdf:type, rdfs:'Class').
 rdfi(X, rdf:type, D) :-                                   % rdfs9
   rdfq(C, rdfs:subClassOf, D),
-  \+ rdf_global_id(rdfs:'Resource', D),
-  \+ rdf_global_id(rdf:'List', D),
   rdfq(X, rdf:type, C).
 %rdfi(C, rdfs:subClassOf, C) :-                            % rdfs10
 %   rdfq(C, rdf:type, rdfs:'Class').
 rdfi(C, rdfs:subClassOf, E) :-                            % rdfs11
   rdfq(C, rdfs:subClassOf, D),
-  rdfq(D, rdfs:subClassOf, E),
-  \+ rdf_global_id(rdfs:'Resource', E),
-  \+ rdf_global_id(rdf:'List', E).
+  rdfq(D, rdfs:subClassOf, E).
 rdfi(P, rdfs:subPropertyOf, rdfs:member) :-               % rdfs12
   rdfq(P, rdf:type, rdfs:'ContainerMembershipProperty').
 rdfi(X, rdfs:subClassOf, rdfs:'Literal') :-               % rdfs13
