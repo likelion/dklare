@@ -23,18 +23,47 @@ limitations under the License.
 
 :- table rdfs_only/3 as monotonic.
 :- dynamic rdfq/3 as monotonic.
+:- dynamic class/1, property/1.
 
-:- rdf_meta rdfs(r,r,o),
+:- rdf_meta class(r),
+            property(r),
+            rdfs(r,r,o),
             rdfs_only(r,r,o),
             rdfi(r,r,o),
             rdfq(r,r,o).
 
-:- listen(
-     dklare(loaded),
+:- listen(dklare(loaded),
      ( rdf_monitor(rdf_notify, [-all, +assert, +retract]),
-       rdfs_warm
+       listen(settings(changed(dklare:excluded_classes, _, _)),
+         set_inference_rules
+       ),
+       listen(settings(changed(dklare:excluded_properties, _, _)),
+         set_inference_rules
+       ),
+       set_inference_rules
      )
    ).
+
+set_inference_rules :-
+  setting(dklare:excluded_classes, Classes),
+  setting(dklare:excluded_properties, Properties),
+  transaction((
+    retractall(class(_)),
+    retractall(property(_)),
+    maplist(exclude(class), Classes),
+    maplist(exclude(property), Properties)
+  )),
+  abolish_table_subgoals(rdfs11:rdfs_only(_,_,_)),
+  rdfs_warm.
+
+exclude(Term, Resource0) :-
+  rdf_global_id(Resource0, Resource),
+  exclude_(Term, Resource).
+exclude_(Term, Resource) :-
+  call(Term, Resource), !.
+exclude_(Term, Resource) :-
+  T =.. [Term,Resource],
+  assertz(T).
 
 rdf_notify(assert(S, P, O, _)) :-
   incr_propagate_calls(rdfq(S, P, O)).
@@ -52,40 +81,56 @@ rdfs_only(S, P, O) :-
   \+ rdf(S, P, O).
 
 rdfi(P, rdf:type, rdf:'Property') :-                      % rdfs1
+  \+ class(rdf:'Property'),
   rdfq(_, P, _).
 rdfi(X, rdf:type, C) :-                                   % rdfs2
   rdfq(P, rdfs:domain, C),
+  \+ class(C),
   rdfq(X, P, _).
 rdfi(Y, rdf:type, C) :-                                   % rdfs3
   rdfq(P, rdfs:range, C),
+  \+ class(C),
   rdfq(_, P, Y),
   atom(Y).
 rdfi(X, rdf:type, rdfs:'Resource') :-                     % rdfs4a
+  \+ class(rdfs:'Resource'),
   rdfq(X, _, _).
 rdfi(Y, rdf:type, rdfs:'Resource') :-                     % rdfs4b
+  \+ class(rdfs:'Resource'),
   rdfq(_, _, Y),
   atom(Y).
 rdfi(P, rdfs:subPropertyOf, R) :-                         % rdfs5
   rdfq(P, rdfs:subPropertyOf, Q),
-  rdfq(Q, rdfs:subPropertyOf, R).
+  rdfq(Q, rdfs:subPropertyOf, R),
+  \+ property(R).
 %rdfi(P, rdfs:subPropertyOf, P) :-                         % rdfs6
 %  rdfq(P, rdf:type, rdf:'Property').
 rdfi(X, Q, Y) :-                                          % rdfs7
   rdfq(P, rdfs:subPropertyOf, Q),
-  rdfq(X, P, Y).
+  \+ property(Q),
+  rdfq(X, P, Y),
+  ( rdf_equal(rdf:type, Q)
+  -> \+ class(Y)
+  ; true
+  ).
 rdfi(C, rdfs:subClassOf, rdfs:'Resource') :-              % rdfs8
+  \+ class(rdfs:'Resource'),
   rdfq(C, rdf:type, rdfs:'Class').
 rdfi(X, rdf:type, D) :-                                   % rdfs9
   rdfq(C, rdfs:subClassOf, D),
+  \+ class(D),
   rdfq(X, rdf:type, C).
 %rdfi(C, rdfs:subClassOf, C) :-                            % rdfs10
 %   rdfq(C, rdf:type, rdfs:'Class').
 rdfi(C, rdfs:subClassOf, E) :-                            % rdfs11
   rdfq(C, rdfs:subClassOf, D),
-  rdfq(D, rdfs:subClassOf, E).
+  rdfq(D, rdfs:subClassOf, E),
+  \+ class(E).
 rdfi(P, rdfs:subPropertyOf, rdfs:member) :-               % rdfs12
+  \+ property(rdfs:member),
   rdfq(P, rdf:type, rdfs:'ContainerMembershipProperty').
 rdfi(X, rdfs:subClassOf, rdfs:'Literal') :-               % rdfs13
+  \+ class(rdfs:'Literal'),
   rdfq(X, rdf:type, rdfs:'Datatype').
 
 rdfq(S, P, O) :-

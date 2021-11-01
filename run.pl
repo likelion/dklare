@@ -50,7 +50,11 @@ main :-
   rdf_attach_db('RDF-store', []),
   expand_file_name('config-available/*.pl', Configs),
   maplist(use_module, Configs),
-  setting(http:public_port, Port),
+  catch(
+    setting(http:public_port, Port),
+    _,
+    Port = 3020
+  ),
   http_server([port(Port)]),
   ( after_load_goal(Goal)
   -> call(Goal),

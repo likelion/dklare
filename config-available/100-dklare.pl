@@ -39,3 +39,5 @@ prolog:message_prefix_hook(thread, Prefix) :-
    ).
 
 :- setting(dklare:knowledge_path, atom, 'knowledge/', 'Path to initial knowledge files').
+:- setting(dklare:excluded_classes, list, [rdfs:'Resource',rdf:'List'], 'Classes excluded from RDFS inference').
+:- setting(dklare:excluded_properties, list, [rdfs:seeAlso], 'Properties excluded from RDFS inference').
