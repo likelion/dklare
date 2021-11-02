@@ -35,7 +35,11 @@ load_knowledge :-
           atom_concat(Prefix, File, Path),
           atom_string(Graph, GraphS),
           atom_concat('_:', File, AnonPrefix),
-          rdf_load(Path, [graph(Graph),multifile(true),anon_prefix(AnonPrefix)])
+          catch(
+            rdf_load(Path, [graph(Graph),multifile(true),anon_prefix(AnonPrefix)]),
+            _,
+            true
+          )
         ),
         Paths
       ),

@@ -20,10 +20,12 @@ limitations under the License.
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(increval)).
+:- use_module(library(utils)).
 
 :- table rdfs_only/3 as monotonic.
 :- dynamic rdfq/3 as monotonic.
-:- dynamic class/1, property/1.
+
+:- thread_local class/1, property/1, intransaction/0, inferred/1.
 
 :- rdf_meta class(r),
             property(r),
@@ -33,28 +35,26 @@ limitations under the License.
             rdfq(r,r,o).
 
 :- listen(dklare(loaded),
-     ( rdf_monitor(rdf_notify, [-all, +assert, +retract]),
+     ( rdf_monitor(rdf_notify, [-all, +assert, +retract, +transaction, +load]),
        listen(settings(changed(dklare:excluded_classes, _, _)),
-         set_inference_rules
+         thread_signal(main, set_exclusions)
        ),
        listen(settings(changed(dklare:excluded_properties, _, _)),
-         set_inference_rules
+         thread_signal(main, set_exclusions)
        ),
-       set_inference_rules
+       prolog_listen(rdfs_only/3, rdfs_new),
+       set_exclusions
      )
    ).
 
-set_inference_rules :-
+set_exclusions :-
   setting(dklare:excluded_classes, Classes),
   setting(dklare:excluded_properties, Properties),
-  transaction((
-    retractall(class(_)),
-    retractall(property(_)),
-    maplist(exclude(class), Classes),
-    maplist(exclude(property), Properties)
-  )),
-  abolish_table_subgoals(rdfs11:rdfs_only(_,_,_)),
-  rdfs_warm.
+  retractall(class(_)),
+  retractall(property(_)),
+  maplist(exclude(class), Classes),
+  maplist(exclude(property), Properties),
+  rdfs_reinit.
 
 exclude(Term, Resource0) :-
   rdf_global_id(Resource0, Resource),
@@ -66,10 +66,52 @@ exclude_(Term, Resource) :-
   assertz(T).
 
 rdf_notify(assert(S, P, O, _)) :-
-  incr_propagate_calls(rdfq(S, P, O)).
+  from_rdf_db(O, O2),
+  thread_signal(main, incr_propagate_calls(rdfq(S, P, O2))).
 
 rdf_notify(retract(S, P, O, _)) :-
-  incr_invalidate_calls(rdfq(S, P, O)).
+  from_rdf_db(O, O2),
+  thread_signal(main, incr_invalidate_calls(rdfq(S, P, O2))).
+
+rdf_notify(load(begin(0), _)) :-
+  thread_signal(main, collect).
+
+rdf_notify(load(end(0), _)) :-
+  thread_signal(main, reinfer).
+
+rdf_notify(transaction(begin(0), _)) :-
+  thread_signal(main, collect).
+
+rdf_notify(transaction(end(0), _)) :-
+  thread_signal(main, reinfer).
+
+collect :-
+  ( intransaction
+  -> true
+  ; assertz(intransaction)
+  ).
+
+reinfer :-
+  retractall(intransaction),
+  incr_table_update,
+  repeat,
+    ( retract(inferred(T))
+    -> notify_inferred(T),
+       fail
+    ; true
+    ).
+
+rdfs_new(new_answer, rdfs11:T) :-
+  ( intransaction
+  -> ( inferred(T)
+     -> true
+     ; assertz(inferred(T))
+     )
+  ; notify_inferred(T)
+  ).
+
+notify_inferred(T) :-
+  debug(_, 'Inferred ~@', [debug_args(T)]).
 
 rdfs(S, P, O) :-
   rdf(S, P, O).
@@ -138,8 +180,9 @@ rdfq(S, P, O) :-
 rdfq(S, P, O) :-
   rdf(S, P, O).
 
-rdfs_warm :-
+rdfs_reinit :-
   print_message(information, warming),
+  abolish_table_subgoals(rdfs11:rdfs_only(_,_,_)),
   time(ignore(rdfs_only(_, _, _))),
   Ts = count(0),
   Vs = count(0),
@@ -183,13 +226,10 @@ rdfst :-
       trie_property(T, value_count(C)),
       C > 0
     ), (
-      shorten(A, A2),
-      debug(_, '~w: ~w triples (~D bytes)', [A2,C,S]),
+      debug(_, '~@: ~w variants (~D bytes)', [debug_args(A),C,S]),
       forall(
         trie_gen(T, K),
-        ( shorten(K, K2),
-          debug(_, '  ~w', [K2])
-        )
+        debug(_, '  ~@', [debug_args(K)])
       )
     ; true
     )
@@ -202,21 +242,6 @@ rdfsc :-
     trie_property(T, value_count(C)),
     C > 0
   ),(
-    shorten(A, A2),
-    debug(_, '~w:', [A2]),
-    debug(_, '  ~w triples (~D bytes)', [C,S])
+    debug(_, '~@:', [debug_args(A)]),
+    debug(_, '  ~w variants (~D bytes)', [C,S])
   )).
-
-shorten(T, T2) :-
-  T =.. [F|A],
-  maplist(shorten_iri, A, A2),
-  T2 =.. [F|A2].
-
-shorten_iri(V, V) :-
-  var(V), !.
-shorten_iri(S^^_, S) :- !.
-shorten_iri(S@_, S) :- !.
-shorten_iri(I, I2) :-
-  atom(I), !,
-  rdf_global_id(I2, I).
-shorten_iri(I, I).
