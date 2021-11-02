@@ -15,10 +15,13 @@ limitations under the License.
 */
 
 :- module(utils, [ debug_args/1,
-                   from_rdf_db/2
+                   from_rdf_db/2,
+                   create_thread/2
                   ]).
 
 :- use_module(library(semweb/rdf11)).
+
+:- meta_predicate create_thread(+, :).
 
 :- rdf_meta shorten(o, -),
             from_rdf_db(t, o).
@@ -62,3 +65,15 @@ from_rdf_db(literal(lang(L, A)), S@L) :- !,
 from_rdf_db(literal(A), S^^xsd:string) :- !,
   atom_string(A, S).
 from_rdf_db(R, R).
+
+create_thread(Alias, Goal) :-
+  ( thread_property(Id, alias(Alias)),
+    is_thread(Id)
+  -> ( thread_property(Id, status(running))
+     -> thread_signal(Id, throw(stop))
+     ; true
+     ),
+     thread_join(Id)
+  ; true
+  ),
+  thread_create(Goal, _, [alias(Alias)]).

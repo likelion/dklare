@@ -35,15 +35,15 @@ limitations under the License.
             rdfq(r,r,o).
 
 :- listen(dklare(loaded),
-     ( rdf_monitor(rdf_notify, [-all, +assert, +retract, +transaction, +load]),
+     ( create_thread(rdfs, rdfs_thread),
+       rdf_monitor(rdf_notify, [-all, +assert, +retract, +transaction, +load]),
        listen(settings(changed(dklare:excluded_classes, _, _)),
-         thread_signal(main, set_exclusions)
+         thread_send_message(rdfs, set_exclusions)
        ),
        listen(settings(changed(dklare:excluded_properties, _, _)),
-         thread_signal(main, set_exclusions)
+         thread_send_message(rdfs, set_exclusions)
        ),
-       prolog_listen(rdfs_only/3, rdfs_new),
-       set_exclusions
+       prolog_listen(rdfs_only/3, rdfs_notify)
      )
    ).
 
@@ -67,23 +67,23 @@ exclude_(Term, Resource) :-
 
 rdf_notify(assert(S, P, O, _)) :-
   from_rdf_db(O, O2),
-  thread_signal(main, incr_propagate_calls(rdfq(S, P, O2))).
+  thread_send_message(rdfs, incr_propagate_calls(rdfq(S, P, O2))).
 
 rdf_notify(retract(S, P, O, _)) :-
   from_rdf_db(O, O2),
-  thread_signal(main, incr_invalidate_calls(rdfq(S, P, O2))).
+  thread_send_message(rdfs, incr_invalidate_calls(rdfq(S, P, O2))).
 
 rdf_notify(load(begin(0), _)) :-
-  thread_signal(main, collect).
+  thread_send_message(rdfs, collect).
 
 rdf_notify(load(end(0), _)) :-
-  thread_signal(main, reinfer).
+  thread_send_message(rdfs, reinfer).
 
 rdf_notify(transaction(begin(0), _)) :-
-  thread_signal(main, collect).
+  thread_send_message(rdfs, collect).
 
 rdf_notify(transaction(end(0), _)) :-
-  thread_signal(main, reinfer).
+  thread_send_message(rdfs, reinfer).
 
 collect :-
   ( intransaction
@@ -101,7 +101,7 @@ reinfer :-
     ; true
     ).
 
-rdfs_new(new_answer, rdfs11:T) :-
+rdfs_notify(new_answer, rdfs11:T) :-
   ( intransaction
   -> ( inferred(T)
      -> true
@@ -180,6 +180,16 @@ rdfq(S, P, O) :-
 rdfq(S, P, O) :-
   rdf(S, P, O).
 
+rdfs_thread :-
+  set_exclusions,
+  repeat,
+    thread_get_message(Message),
+    process_message(Message),
+    fail.
+
+process_message(Goal) :-
+  once(Goal).
+
 rdfs_reinit :-
   print_message(information, warming),
   abolish_table_subgoals(rdfs11:rdfs_only(_,_,_)),
@@ -220,28 +230,32 @@ prolog:message(inferred(Triples, Variants, Bytes)) -->
 % -- DEBUG
 
 rdfst :-
-  forall((
+  thread_send_message(rdfs, (
+    forall((
+        current_table(rdfs11:A, T),
+        trie_property(T, size(S)),
+        trie_property(T, value_count(C)),
+        C > 0
+      ), (
+        debug(_, '~@: ~w variants (~D bytes)', [debug_args(A),C,S]),
+        forall(
+          trie_gen(T, K),
+          debug(_, '  ~@', [debug_args(K)])
+        )
+      ; true
+      )
+    )
+  )).
+
+rdfsc :-
+  thread_send_message(rdfs, (
+    forall((
       current_table(rdfs11:A, T),
       trie_property(T, size(S)),
       trie_property(T, value_count(C)),
       C > 0
-    ), (
-      debug(_, '~@: ~w variants (~D bytes)', [debug_args(A),C,S]),
-      forall(
-        trie_gen(T, K),
-        debug(_, '  ~@', [debug_args(K)])
-      )
-    ; true
-    )
-  ).
-
-rdfsc :-
-  forall((
-    current_table(rdfs11:A, T),
-    trie_property(T, size(S)),
-    trie_property(T, value_count(C)),
-    C > 0
-  ),(
-    debug(_, '~@:', [debug_args(A)]),
-    debug(_, '  ~w variants (~D bytes)', [C,S])
+    ),(
+      debug(_, '~@:', [debug_args(A)]),
+      debug(_, '  ~w variants (~D bytes)', [C,S])
+    ))
   )).

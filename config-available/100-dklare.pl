@@ -23,7 +23,9 @@ limitations under the License.
 
 prolog:message_prefix_hook(thread, Prefix) :-
   get_time(Now),
-  format_time(atom(Prefix), '[%H:%M:%S.%f]', Now, posix).
+  format_time(atom(Prefix0), '[%H:%M:%S.%f]', Now, posix),
+  thread_self(Thread),
+  format(atom(Prefix), '~w [~w]', [Prefix0,Thread]).
 
 :- use_module(library(semweb/rdf_db), [rdf_register_prefix/2]).
 :- rdf_register_prefix(d, 'http://dklare.org/2021/10/dklare#').
