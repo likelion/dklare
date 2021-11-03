@@ -19,6 +19,7 @@ limitations under the License.
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(semweb/turtle)).
 :- use_module(library(settings)).
+:- use_module(library(utils)).
 
 load_knowledge :-
   setting(dklare:knowledge_path, Prefix0),
@@ -44,20 +45,20 @@ load_knowledge :-
         Paths
       ),
       rdf_unload_graph(ManifestGraph)
-    ),
+    )
+  ), _, true),
+  ( var(Paths)
+  -> Paths = []
+  ; true
+  ),
+  catch((
     atom_concat(Prefix, '*', Search),
     expand_file_name(Search, Files),
     subtract(Files, [Manifest|Paths], Rest),
     forall(
-      member(Path, Rest),
+      ( member(Path, Rest),
+        exists_file(Path)
+      ),
       rdf_load(Path)
-    )),
-    _,
-    true
-  ).
-
-ensure_slash(Dir0, Dir) :-
-  ( sub_atom(Dir0, _, _, 0, /)
-  -> Dir = Dir0
-  ; atom_concat(Dir0, /, Dir)
-  ).
+    )
+  ), _, true).

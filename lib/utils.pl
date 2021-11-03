@@ -20,7 +20,8 @@ limitations under the License.
                    async_message/2,
                    sync_message/2,
                    sync_message/3,
-                   handle_messages/0
+                   handle_messages/0,
+                   ensure_slash/2
                  ]).
 
 :- use_module(library(semweb/rdf11)).
@@ -130,3 +131,9 @@ handle_message(all(Goal, Queue)) :- !,
   ).
 handle_message(Goal) :-
   once(Goal).
+
+ensure_slash(Dir0, Dir) :-
+  ( sub_atom(Dir0, _, _, 0, /)
+  -> Dir = Dir0
+  ; atom_concat(Dir0, /, Dir)
+  ).
