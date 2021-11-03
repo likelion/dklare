@@ -16,12 +16,19 @@ limitations under the License.
 
 :- module(utils, [ debug_args/1,
                    from_rdf_db/2,
-                   create_thread/2
-                  ]).
+                   create_thread/2,
+                   async_message/2,
+                   sync_message/2,
+                   sync_message/3,
+                   handle_messages/0
+                 ]).
 
 :- use_module(library(semweb/rdf11)).
 
-:- meta_predicate create_thread(+, :).
+:- meta_predicate create_thread(+, :),
+                  async_message(+, :),
+                  sync_message(+, :),
+                  sync_message(+, :, -).
 
 :- rdf_meta shorten(o, -),
             from_rdf_db(t, o).
@@ -77,3 +84,49 @@ create_thread(Alias, Goal) :-
   ; true
   ),
   thread_create(Goal, _, [alias(Alias)]).
+
+async_message(Thread, Goal) :-
+  thread_send_message(Thread, Goal).
+
+sync_message(Thread, Goal) :-
+  sync_message_(Thread, one, Goal, Goal).
+sync_message(Thread, Goal, Result) :-
+  sync_message_(Thread, all, Goal, Result).
+
+sync_message_(Thread, Quantifier, Goal, Result) :-
+  gensym('__queue', Alias),
+  call_cleanup(
+    ( message_queue_create(Queue, [alias(Alias)]),
+      Message =.. [Quantifier,Goal,Queue],
+      thread_send_message(Thread, Message),
+      thread_get_message(Queue, Result)
+    ),
+    message_queue_destroy(Queue)
+  ).
+
+handle_messages :-
+  catch(
+    ( repeat,
+        thread_get_message(Message),
+        handle_message(Message),
+        fail
+    ),
+    E,
+    ( E \== '$aborted'
+    -> print_message(error, E)
+    ; true
+    )
+  ).
+
+handle_message(one(Goal, Queue)) :- !,
+  call_cleanup(
+    once(Goal),
+    thread_send_message(Queue, Goal)
+  ).
+handle_message(all(Goal, Queue)) :- !,
+  call_cleanup(
+    findall(Goal, Goal, Result),
+    thread_send_message(Queue, Result)
+  ).
+handle_message(Goal) :-
+  once(Goal).

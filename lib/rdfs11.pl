@@ -22,7 +22,7 @@ limitations under the License.
 :- use_module(library(increval)).
 :- use_module(library(utils)).
 
-:- table rdfs_only/3 as monotonic.
+:- table rdfs_/3 as monotonic.
 :- dynamic rdfq/3 as monotonic.
 
 :- thread_local class/1, property/1, intransaction/0, inferred/1.
@@ -35,15 +35,16 @@ limitations under the License.
             rdfq(r,r,o).
 
 :- listen(dklare(loaded),
-     ( create_thread(rdfs, rdfs_thread),
+     ( create_thread(rdfs, (set_exclusions, handle_messages)),
        rdf_monitor(rdf_notify, [-all, +assert, +retract, +transaction, +load]),
        listen(settings(changed(dklare:excluded_classes, _, _)),
-         thread_send_message(rdfs, set_exclusions)
+         async_message(rdfs, set_exclusions)
        ),
        listen(settings(changed(dklare:excluded_properties, _, _)),
-         thread_send_message(rdfs, set_exclusions)
+         async_message(rdfs, set_exclusions)
        ),
-       prolog_listen(rdfs_only/3, rdfs_notify)
+       prolog_listen(rdfs_/3, rdfs_notify),
+       sync_message(rdfs, true)
      )
    ).
 
@@ -67,23 +68,23 @@ exclude_(Term, Resource) :-
 
 rdf_notify(assert(S, P, O, _)) :-
   from_rdf_db(O, O2),
-  thread_send_message(rdfs, incr_propagate_calls(rdfq(S, P, O2))).
+  async_message(rdfs, incr_propagate_calls(rdfq(S, P, O2))).
 
 rdf_notify(retract(S, P, O, _)) :-
   from_rdf_db(O, O2),
-  thread_send_message(rdfs, incr_invalidate_calls(rdfq(S, P, O2))).
+  async_message(rdfs, incr_invalidate_calls(rdfq(S, P, O2))).
 
 rdf_notify(load(begin(0), _)) :-
-  thread_send_message(rdfs, collect).
+  async_message(rdfs, collect).
 
 rdf_notify(load(end(0), _)) :-
-  thread_send_message(rdfs, reinfer).
+  async_message(rdfs, reinfer).
 
 rdf_notify(transaction(begin(0), _)) :-
-  thread_send_message(rdfs, collect).
+  async_message(rdfs, collect).
 
 rdf_notify(transaction(end(0), _)) :-
-  thread_send_message(rdfs, reinfer).
+  async_message(rdfs, reinfer).
 
 collect :-
   ( intransaction
@@ -114,11 +115,15 @@ notify_inferred(T) :-
   debug(_, 'Inferred ~@', [debug_args(T)]).
 
 rdfs(S, P, O) :-
-  rdf(S, P, O).
-rdfs(S, P, O) :-
   rdfs_only(S, P, O).
+rdfs(S, P, O) :-
+  rdf(S, P, O).
 
 rdfs_only(S, P, O) :-
+  sync_message(rdfs, rdfs11:rdfs_(S, P, O), Result),
+  member(rdfs11:rdfs_(S, P, O), Result).
+
+rdfs_(S, P, O) :-
   rdfi(S, P, O),
   \+ rdf(S, P, O).
 
@@ -176,86 +181,93 @@ rdfi(X, rdfs:subClassOf, rdfs:'Literal') :-               % rdfs13
   rdfq(X, rdf:type, rdfs:'Datatype').
 
 rdfq(S, P, O) :-
-  rdfs_only(S, P, O).
+  rdfs_(S, P, O).
 rdfq(S, P, O) :-
   rdf(S, P, O).
 
-rdfs_thread :-
-  set_exclusions,
-  repeat,
-    thread_get_message(Message),
-    process_message(Message),
-    fail.
-
-process_message(Goal) :-
-  once(Goal).
-
 rdfs_reinit :-
   print_message(information, warming),
-  abolish_table_subgoals(rdfs11:rdfs_only(_,_,_)),
-  time(ignore(rdfs_only(_, _, _))),
+  abolish_table_subgoals(rdfs11:rdfs_(_,_,_)),
+  time(ignore(rdfs_(_, _, _))),
+  print_rdfs_totals(none).
+
+print_rdfs_totals(Mode) :-
   Ts = count(0),
   Vs = count(0),
   Bs = count(0),
   forall((
     current_table(rdfs11:A, T),
+    trie_property(T, size(B)),
     trie_property(T, value_count(C)),
     C > 0,
-    ( A =@= rdfs_only(_,_,_)
+    ( A =@= rdfs_(_,_,_)
     -> nb_setarg(1, Ts, C)
     ; true
-    ),
-    trie_property(T, size(B))
-  ),(
+    )
+  ), (
     arg(1, Vs, V0),
     plus(V0, C, V1),
     nb_setarg(1, Vs, V1),
     arg(1, Bs, B0),
     plus(B0, B, B1),
-    nb_setarg(1, Bs, B1)
+    nb_setarg(1, Bs, B1),
+    ( Mode == none
+    -> true
+    ; ( V0 == 0,
+        C > 0
+      -> print_message(information, table_header),
+         print_message(information, table_divider)
+      ; true
+      ),
+      print_message(information, table_totals(A, C, B)),
+      ( Mode == tbl
+      -> forall(
+           trie_gen(T, K),
+           print_message(information, table_variant(K))
+         )
+      ; true
+      )
+    )
   )),
   arg(1, Ts, Triples),
   arg(1, Vs, Variants),
   arg(1, Bs, Bytes),
-  print_message(information, inferred(Triples, Variants, Bytes)).
+  ( Mode \== none,
+    Triples > 0
+  -> print_message(information, table_divider)
+  ; true
+  ),
+  print_message(information, inferred(Triples, Variants, Bytes)),
+  print_message(information, total_space_used).
 
 :- multifile prolog:message/3.
 
 prolog:message(warming) -->
   [ 'Warming RDFS...' ].
 
+prolog:message(table_header) -->
+  [ '~` t~w~15+ ~` t~w~15+  ~w'-['Variants','Bytes','Variant'] ].
+
+prolog:message(table_divider) -->
+  [ '------------------------------------------------------' ].
+
+prolog:message(table_totals(Table, Variants, Bytes)) -->
+  [ '~` t~D~15+ ~` t~D~15+  ~@'-[Variants, Bytes, utils:debug_args(Table)] ].
+
+prolog:message(table_variant(Variant)) -->
+  [ '~` t~34+~@'-[utils:debug_args(Variant)] ].
+
 prolog:message(inferred(Triples, Variants, Bytes)) -->
   [ 'Inferred ~D triples (~D variants) [~D bytes]'-[Triples, Variants, Bytes] ].
+
+prolog:message(total_space_used) -->
+  { statistics(table_space_used, TSU) },
+  [ 'Table space used: ~D bytes'-[TSU] ].
 
 % -- DEBUG
 
 rdfst :-
-  thread_send_message(rdfs, (
-    forall((
-        current_table(rdfs11:A, T),
-        trie_property(T, size(S)),
-        trie_property(T, value_count(C)),
-        C > 0
-      ), (
-        debug(_, '~@: ~w variants (~D bytes)', [debug_args(A),C,S]),
-        forall(
-          trie_gen(T, K),
-          debug(_, '  ~@', [debug_args(K)])
-        )
-      ; true
-      )
-    )
-  )).
+  sync_message(rdfs, print_rdfs_totals(tbl)).
 
 rdfsc :-
-  thread_send_message(rdfs, (
-    forall((
-      current_table(rdfs11:A, T),
-      trie_property(T, size(S)),
-      trie_property(T, value_count(C)),
-      C > 0
-    ),(
-      debug(_, '~@:', [debug_args(A)]),
-      debug(_, '  ~w variants (~D bytes)', [C,S])
-    ))
-  )).
+  sync_message(rdfs, print_rdfs_totals(cnt)).
