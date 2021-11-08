@@ -31,6 +31,7 @@ prolog:message_prefix_hook(thread, Prefix) :-
 :- rdf_register_prefix(d, 'http://dklare.org/2021/10/dklare#').
 
 :- use_module(library(rdfs11)).
+:- use_module(library(lambda)).
 :- use_module(library(kb)).
 
 :- cp_after_load(
