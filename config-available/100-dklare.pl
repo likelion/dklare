@@ -32,6 +32,7 @@ prolog:message_prefix_hook(thread, Prefix) :-
 
 :- use_module(library(rdfs11)).
 :- use_module(library(lambda)).
+:- use_module(library(prelude)).
 :- use_module(library(kb)).
 
 :- cp_after_load(
