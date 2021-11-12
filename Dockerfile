@@ -2,6 +2,8 @@ FROM ubuntu:20.04 as build
 
 LABEL maintainer "likelion@gmail.com"
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 ARG PUBLIC_HOST=localhost
 ARG PUBLIC_PORT=3020
 
@@ -15,16 +17,20 @@ COPY run.pl /opt/dklare/
 WORKDIR /opt/dklare
 
 RUN apt-get update && \
-    DEBIAN_FRONTEND="noninteractive" \
     apt-get -yq --no-install-recommends install tzdata software-properties-common && \
+    ln -fs /usr/share/zoneinfo/Europe/Stockholm /etc/localtime && \
+    dpkg-reconfigure tzdata && \
     apt-add-repository ppa:swi-prolog/devel && \
     apt-get update && \
     apt-get -yq --no-install-recommends install swi-prolog && \
-    apt-get -y remove --purge software-properties-common && \
-    apt-get autoremove -y && \
+    apt-get -yq remove --purge software-properties-common && \
+    apt-get -yq autoremove && \
     rm -rf /var/lib/apt/lists/* && \
     sed -i 's|%PUBLIC_HOST%|'$PUBLIC_HOST'|g' settings.db && \
     sed -i 's/%PUBLIC_PORT%/'$PUBLIC_PORT'/g' settings.db
+
+VOLUME /opt/dklare/knowledge
+VOLUME /opt/dklare/RDF-store
 
 EXPOSE ${PUBLIC_PORT}
 
