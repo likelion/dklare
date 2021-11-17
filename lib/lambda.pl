@@ -16,15 +16,19 @@ limitations under the License.
 
 :- module(lambda, [ op(1200, xfx, ===),
                     op(1100, xfx, where),
-                    op(600, xfx, @),
-                    term_expansion/2 ] ).
+                    op(600, xfx, @) ] ).
 
 :- dynamic fun/1.
 
-term_expansion(H === B, H2 :- B2) :-
-  H =.. [F|A0],
+user:term_expansion(H === B, H2 :- B2) :-
+  strip_module(H, M, P),
+  ( M == lambda
+  -> prolog_load_context(module, Mo)
+  ; Mo = M
+  ),
+  P =.. [F|A0],
   length(A0, A),
-  define(F/A),
+  define(Mo:F/A),
   append(A0, [R], A1),
   H2 =.. [F|A1],
   expand_body(B, B2, R).
@@ -37,9 +41,20 @@ define(T) :-
 expand_body(A, true, A) :-
   var(A), !.
 expand_body(A where B, A2, R) :- !,
-  fp_expand(A, B, A2, R).
+  fb_expand(B, B2),
+  fp_expand(A, B2, A2, R).
 expand_body(A, A2, R) :-
   fp_expand(A, true, A2, R).
+
+fb_expand((X,Y), B) :- !,
+  fb_expand(X, B1),
+  fb_expand(Y, B2),
+  conj(B1, B2, B).
+fb_expand(X=Y, B) :- !,
+  fp_expand(X, true, B1, RX),
+  fp_expand(Y, B1, B2, RY),
+  conj(B2, (RX=RY), B).
+fb_expand(X, X).
 
 fp_expand(X, Y, Y, X) :-
   var(X), !.
@@ -48,9 +63,14 @@ fp_expand([A|B], Y0, Y, [RA|RB]) :- !,
   fp_expand(B, Y1, Y, RB).
 fp_expand(X, Y0, Y, R) :-
   callable(X),
-  X =.. [F|A0],
+  strip_module(X, M, P),
+  ( M == lambda
+  -> true
+  ; Mo = M
+  ),
+  P =.. [F|A0],
   length(A0, A),
-  fun(F/A), !,
+  fun(Mo:F/A), !,
   append(A0, [R], A1),
   expand_f(A1, A2, Y0, Y1, R),
   YY =.. [F|A2],
