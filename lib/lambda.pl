@@ -16,9 +16,14 @@ limitations under the License.
 
 :- module(lambda, [ op(1200, xfx, ===),
                     op(1100, xfx, where),
-                    op(600, xfx, @) ] ).
+                    op(600, xfx, @),
+                    eval/2 ] ).
 
 :- dynamic fun/1.
+
+eval(G, R) :-
+  fp_expand(G, true, T, R),
+  call(T).
 
 user:term_expansion(H === B, H2 :- B2) :-
   strip_module(H, M, P),
@@ -31,7 +36,9 @@ user:term_expansion(H === B, H2 :- B2) :-
   define(Mo:F/A),
   append(A0, [R], A1),
   H2 =.. [F|A1],
-  expand_body(B, B2, R).
+  expand_body(B, B2, R),
+  succ(A, A2),
+  export(Mo:F/A2).
 
 define(T) :-
   fun(T), !.

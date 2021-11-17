@@ -115,9 +115,12 @@ notify_inferred(T) :-
   debug(_, 'Inferred ~@', [debug_args(T)]).
 
 rdfs(S, P, O) :-
-  rdfs_only(S, P, O).
-rdfs(S, P, O) :-
-  rdf(S, P, O).
+  ( \+ \+ rdf(S, P, O)
+  -> ( rdfs_only(S, P, O)
+     ; rdf(S, P, O)
+     )
+  ; rdfs_only(S, P, O)
+  ).
 
 rdfs_only(S, P, O) :-
   sync_message(rdfs, rdfs11:rdfs_(S, P, O), Result),
