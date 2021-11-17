@@ -2,6 +2,8 @@
 
 :- use_module(library(lambda)).
 
+'@'(A,B) === R where apply(A,[B,R]).
+
 *(X,Y) === Z where Z is X*Y.
 -(X,Y) === Z where Z is X-Y.
 
@@ -15,5 +17,3 @@ not(true) === false.
 not(false) === true.
 
 neg(L) === map(not,L).
-
-'_@'(not,A,B) :- '_not'(A,B).

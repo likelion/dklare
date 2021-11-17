@@ -19,52 +19,47 @@ limitations under the License.
                     op(600, xfx, @),
                     term_expansion/2 ] ).
 
-def(X, XX, R) :-
-  compound(X),
-  X =.. [F|A],
-  atom_concat('_', F, FF),
-  append(A, [R], AA),
-  XX =.. [FF|AA].
+:- dynamic fun/1.
 
 term_expansion(H === B, H2 :- B2) :-
-  def(H, H2, R),
-  expand_body(B, BE, R),
-  to_conj(BE,B2).
+  H =.. [F|A0],
+  length(A0, A),
+  define(F/A),
+  append(A0, [R], A1),
+  H2 =.. [F|A1],
+  expand_body(B, B2, R).
 
-to_conj([], true) :- !.
-to_conj([H], H) :- !.
-to_conj([H|T], (H,T2)) :-
-  to_conj(T, T2).
+define(T) :-
+  fun(T), !.
+define(T) :-
+  assertz(fun(T)).
 
-expand_body(X, A2, R) :-
-  compound(X),
-  X = where(A, B), !,
-  fp_expand(A, [B], A2, R).
+expand_body(A, true, A) :-
+  var(A), !.
+expand_body(A where B, A2, R) :- !,
+  fp_expand(A, B, A2, R).
 expand_body(A, A2, R) :-
-  fp_expand(A, [], A2, R).
+  fp_expand(A, true, A2, R).
 
-fp_expand(X, Y0, Y, R) :-
-  compound(X),
-  X = A@B, !,
-  expand_f([A,B,_], As, Y0, Y1, R),
-  YY =.. ['_@'|As],
-  append(Y1, [YY], Y).
-fp_expand(X, Y0, Y, [RA|RB]) :-
-  compound(X),
-  X = [A|B], !,
+fp_expand(X, Y, Y, X) :-
+  var(X), !.
+fp_expand([A|B], Y0, Y, [RA|RB]) :- !,
   fp_expand(A, Y0, Y1, RA),
   fp_expand(B, Y1, Y, RB).
 fp_expand(X, Y0, Y, R) :-
-  def(X, XX, _),
-  XX =.. [F|As0],
-  same_length(As0, AA),
-  UX =.. [F|AA],
-  prolog_load_context(module, M),
-  clause(M:UX, _), !,
-  expand_f(As0, As, Y0, Y1, R),
-  YY =.. [F|As],
-  append(Y1, [YY], Y).
-fp_expand(R, Y0, Y0, R).
+  callable(X),
+  X =.. [F|A0],
+  length(A0, A),
+  fun(F/A), !,
+  append(A0, [R], A1),
+  expand_f(A1, A2, Y0, Y1, R),
+  YY =.. [F|A2],
+  conj(Y1, YY, Y).
+fp_expand(X, Y, Y, X).
+
+conj(A, true, A) :- !.
+conj(true, B, B) :- !.
+conj(A, B, (A,B)).
 
 expand_f([R], [R], G0, G0, R) :- !.
 expand_f([H|T], [H2|T2], G0, G, R) :-
