@@ -16,13 +16,14 @@ limitations under the License.
 
 :- module(lambda, [ op(1200, xfx, ===),
                     op(1100, xfx, where),
+                    op(1100, xfx, if),
                     op(600, xfx, @),
                     eval/2 ] ).
 
 :- dynamic fun/1.
 
 eval(G, R) :-
-  fp_expand(G, true, T, R),
+  f_expand(G, true, T, R),
   call(T).
 
 user:term_expansion(H === B, H2 :- B2) :-
@@ -36,7 +37,19 @@ user:term_expansion(H === B, H2 :- B2) :-
   define(Mo:F/A),
   append(A0, [R], A1),
   H2 =.. [F|A1],
-  expand_body(B, B2, R),
+  ( var(B)
+  -> R = B,
+     B2 = !
+  ; ( B = (X if Y)
+    -> b_expand(Y, Y1),
+       conj(Y1, !, Y2),
+       f_expand(X, Y2, B2, R)
+    ; B = (X where Y)
+    -> b_expand(Y, Y1),
+       f_expand(X, Y1, B2, R)
+    ; f_expand(B, !, B2, R)
+    )
+  ),
   succ(A, A2),
   export(Mo:F/A2).
 
@@ -45,30 +58,28 @@ define(T) :-
 define(T) :-
   assertz(fun(T)).
 
-expand_body(A, true, A) :-
-  var(A), !.
-expand_body(A where B, A2, R) :- !,
-  fb_expand(B, B2),
-  fp_expand(A, B2, A2, R).
-expand_body(A, A2, R) :-
-  fp_expand(A, true, A2, R).
+conj(A, true, A) :- !.
+conj(true, B, B) :- !.
+conj(A, B, (A,B)).
 
-fb_expand((X,Y), B) :- !,
-  fb_expand(X, B1),
-  fb_expand(Y, B2),
-  conj(B1, B2, B).
-fb_expand(X=Y, B) :- !,
-  fp_expand(X, true, B1, RX),
-  fp_expand(Y, B1, B2, RY),
-  conj(B2, (RX=RY), B).
-fb_expand(X, X).
-
-fp_expand(X, Y, Y, X) :-
+b_expand(X, X) :-
   var(X), !.
-fp_expand([A|B], Y0, Y, [RA|RB]) :- !,
-  fp_expand(A, Y0, Y1, RA),
-  fp_expand(B, Y1, Y, RB).
-fp_expand(X, Y0, Y, R) :-
+b_expand((X,Y), B) :- !,
+  b_expand(X, B1),
+  b_expand(Y, B2),
+  conj(B1, B2, B).
+b_expand(X=Y, B) :- !,
+  f_expand(X, true, B1, RX),
+  f_expand(Y, B1, B2, RY),
+  conj(B2, (RX=RY), B).
+b_expand(X, X).
+
+f_expand(X, Y, Y, X) :-
+  var(X), !.
+f_expand([A|B], Y0, Y, [RA|RB]) :- !,
+  f_expand(A, Y0, Y1, RA),
+  f_expand(B, Y1, Y, RB).
+f_expand(X, Y0, Y, R) :-
   callable(X),
   strip_module(X, M, P),
   ( M == lambda
@@ -79,16 +90,12 @@ fp_expand(X, Y0, Y, R) :-
   length(A0, A),
   fun(Mo:F/A), !,
   append(A0, [R], A1),
-  expand_f(A1, A2, Y0, Y1, R),
+  a_expand(A1, A2, Y0, Y1, R),
   YY =.. [F|A2],
   conj(Y1, YY, Y).
-fp_expand(X, Y, Y, X).
+f_expand(X, Y, Y, X).
 
-conj(A, true, A) :- !.
-conj(true, B, B) :- !.
-conj(A, B, (A,B)).
-
-expand_f([R], [R], G0, G0, R) :- !.
-expand_f([H|T], [H2|T2], G0, G, R) :-
-  fp_expand(H, G0, G1, H2),
-  expand_f(T, T2, G1, G, R).
+a_expand([R], [R], G0, G0, R) :- !.
+a_expand([H|T], [H2|T2], G0, G, R) :-
+  f_expand(H, G0, G1, H2),
+  a_expand(T, T2, G1, G, R).
