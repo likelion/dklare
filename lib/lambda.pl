@@ -23,10 +23,17 @@ limitations under the License.
 :- dynamic fun/1.
 
 eval(G, R) :-
-  f_expand(G, true, T, R),
-  call(T).
+  prolog_load_context(module, Mo),
+  f_expand(G, true, T, [], L, R),
+  Mo:maplist(assertz, L),
+  Mo:T,
+  maplist(abolishl(Mo), L).
 
-user:term_expansion(H === B, H2 :- B2) :-
+abolishl(Mo, H:-_) :-
+  functor(H, F, A),
+  abolish(Mo:F/A).
+
+user:term_expansion(H === B, [H2 :- B2|L]) :-
   strip_module(H, M, P),
   ( M == lambda
   -> prolog_load_context(module, Mo)
@@ -39,15 +46,16 @@ user:term_expansion(H === B, H2 :- B2) :-
   H2 =.. [F|A1],
   ( var(B)
   -> R = B,
-     B2 = !
+     B2 = !,
+     L = []
   ; ( B = (X if Y)
-    -> b_expand(Y, Y1),
+    -> b_expand(Y, Y1, [], L0),
        conj(Y1, !, Y2),
-       f_expand(X, Y2, B2, R)
+       f_expand(X, Y2, B2, L0, L, R)
     ; B = (X where Y)
-    -> b_expand(Y, Y1),
-       f_expand(X, Y1, B2, R)
-    ; f_expand(B, !, B2, R)
+    -> b_expand(Y, Y1, [], L0),
+       f_expand(X, Y1, B2, L0, L, R)
+    ; f_expand(B, !, B2, [], L, R)
     )
   ),
   succ(A, A2),
@@ -62,40 +70,71 @@ conj(A, true, A) :- !.
 conj(true, B, B) :- !.
 conj(A, B, (A,B)).
 
-b_expand(X, X) :-
+b_expand(X, X, L, L) :-
   var(X), !.
-b_expand((X,Y), B) :- !,
-  b_expand(X, B1),
-  b_expand(Y, B2),
+b_expand((X,Y), B, L0, L) :- !,
+  b_expand(X, B1, L0, L1),
+  b_expand(Y, B2, L1, L),
   conj(B1, B2, B).
-b_expand(X=Y, B) :- !,
-  f_expand(X, true, B1, RX),
-  f_expand(Y, B1, B2, RY),
+b_expand(X=Y, B, L0, L) :- !,
+  f_expand(X, true, B1, L0, L1, RX),
+  f_expand(Y, B1, B2, L1, L, RY),
   conj(B2, (RX=RY), B).
-b_expand(X, X).
+b_expand(X, X, L, L).
 
-f_expand(X, Y, Y, X) :-
+f_expand(X, Y, Y, L, L, X) :-
   var(X), !.
-f_expand([A|B], Y0, Y, [RA|RB]) :- !,
-  f_expand(A, Y0, Y1, RA),
-  f_expand(B, Y1, Y, RB).
-f_expand(X, Y0, Y, R) :-
+f_expand([A|B], Y0, Y, L0, L, [RA|RB]) :- !,
+  f_expand(A, Y0, Y1, L0, L1, RA),
+  f_expand(B, Y1, Y, L1, L, RB).
+f_expand(X, Y0, Y, L0, L, R) :-
   callable(X),
   strip_module(X, M, P),
-  ( M == lambda
-  -> true
-  ; Mo = M
-  ),
   P =.. [F|A0],
-  length(A0, A),
-  fun(Mo:F/A), !,
-  append(A0, [R], A1),
-  a_expand(A1, A2, Y0, Y1, R),
-  YY =.. [F|A2],
-  conj(Y1, YY, Y).
-f_expand(X, Y, Y, X).
+  ( F == f
+  -> f_decomp(A0, Body, [], Bound, Free),
+     gensym('_f', Fun),
+     R =.. [Fun|Free],
+     Y = Y0,
+     append(Free, Bound, Args0),
+     append(Args0, [R1], Args),
+     Def =.. [Fun|Args],
+     f_expand(Body, true, Body2, L0, L1, R1),
+     L = [Def:-Body2|L1],
+     ( M == lambda
+     -> prolog_load_context(module, Mo)
+     ; Mo = M
+     ),
+     length(Args0, Ar),
+     define(Mo:Fun/Ar)
+  ; ( M == lambda
+    -> true
+    ; Mo = M
+    ),
+    length(A0, A),
+    fun(Mo:F/A), !,
+    append(A0, [R], A1),
+    a_expand(A1, A2, Y0, Y1, L0, L, R),
+    YY =.. [F|A2],
+    conj(Y1, YY, Y)
+  ), !.
+f_expand(X, Y, Y, L, L, X).
 
-a_expand([R], [R], G0, G0, R) :- !.
-a_expand([H|T], [H2|T2], G0, G, R) :-
-  f_expand(H, G0, G1, H2),
-  a_expand(T, T2, G1, G, R).
+f_decomp([Ta], Ta, Bo0, Bo, Fr) :- !,
+  term_variables(Ta, F0),
+  without(F0, Bo0, Fr),
+  reverse(Bo0, Bo).
+f_decomp([H|T], Ta, L0, B, F) :-
+  var(H),
+  f_decomp(T, Ta, [H|L0], B, F).
+
+without([], _, []) :- !.
+without(S, [], S) :- !.
+without(S, [H|T], R) :-
+  exclude(==(H),S,S1),
+  without(S1, T, R).
+
+a_expand([R], [R], G, G, L, L, R) :- !.
+a_expand([H|T], [H2|T2], G0, G, L0, L, R) :-
+  f_expand(H, G0, G1, L0, L1, H2),
+  a_expand(T, T2, G1, G, L1, L, R).
