@@ -2,16 +2,6 @@
 
 :- reexport(library(lambda)).
 
-@(A,B) === R where
-  functor(A, F, Ar),
-  succ(Ar, Ar2),
-  ( lambda:fun(M:F/Ar2)
-  -> apply(M:A,[B,R])
-  ; A =.. [F|A0],
-    append(A0, [B], A1),
-    R =.. [F|A1]
-  ).
-
 X+Y === Z where Z is X+Y.
 X-Y === Z where Z is X-Y.
 X*Y === Z where Z is X*Y.
@@ -39,11 +29,18 @@ filter(P,[X|Xs]) === [X|filter(P,Xs)] if P@X=true.
 filter(P,[_|Xs]) === filter(P,Xs).
 
 foldr(_,[],E) === E.
-foldr(F,[X|Xs],E) === (F@X)@(foldr(F,Xs,E)).
+foldr(F,[X|Xs],E) === F@X@foldr(F,Xs,E).
 
 foldl(_,[],E) === E.
-foldl(F,[X|Xs],E) === foldl(F,Xs,(F@E)@X).
+foldl(F,[X|Xs],E) === foldl(F,Xs,F@E@X).
 
 zip([],_) === [].
 zip(_,[]) === [].
 zip([X|Xs],[Y|Ys]) === [(X,Y)|zip(Xs,Ys)].
+
+ifthen(true,I,_) === I@d.
+ifthen(false,_,T) === T@d.
+
+helper(Acc,N) === ifthen(N>1, f(_,helper(Acc*N,N-1)), f(_,Acc)).
+factorial2(N) === helper(1,N).
+
