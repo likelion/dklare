@@ -19,21 +19,24 @@ limitations under the License.
                     op(1100, xfx, if),
                     op(600, yfx, @),
                     '@'/3,
+                    eval/1,
                     eval/2 ] ).
 
-:- discontiguous '@'/3.
+:- discontiguous fun/1, '@'/3.
 :- dynamic fun/1, '@'/3.
+
+eval(G) :-
+  eval(G, R),
+  print_term(R, []).
 
 eval(G, R) :-
   prolog_load_context(module, Mo),
   expand_expression(G, true, T, R, L, []),
-  Mo:maplist(assertz, L),
-  Mo:T,
-  maplist(abolishl(Mo), L).
-
-abolishl(Mo, H:-_) :-
-  functor(H, F, A),
-  abolish(Mo:F/A).
+  Mo:maplist(assertz, L, Ref),
+  call_cleanup(
+    Mo:T,
+    maplist(erase, Ref)
+  ).
 
 user:term_expansion(H === B, Clauses) :-
   strip_module(H, M, P),
