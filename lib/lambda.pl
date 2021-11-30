@@ -26,7 +26,7 @@ limitations under the License.
 
 eval(G, R) :-
   prolog_load_context(module, Mo),
-  expand_expression(G, true, T, [], L, R),
+  expand_expression(G, true, T, R, L, []),
   Mo:maplist(assertz, L),
   Mo:T,
   maplist(abolishl(Mo), L).
@@ -132,7 +132,7 @@ expand_expression(X, E0, E, R) -->
        length(Args0, Ar),
        define(Mo:RF/Ar, PA)
      },
-     [PA]
+     PA
   ; { ( XF == '@',
         length(A0, 2)
       ; ( M == lambda
