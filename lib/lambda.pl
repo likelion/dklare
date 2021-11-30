@@ -44,20 +44,7 @@ user:term_expansion(H === B, [H2 :- B2|L]) :-
   define(Mo:F/A),
   append(A0, [R], A1),
   H2 =.. [F|A1],
-  ( var(B)
-  -> R = B,
-     B2 = !,
-     L = []
-  ; ( B = (X if Y)
-    -> b_expand(Y, Y1, [], L0),
-       conj(Y1, !, Y2),
-       f_expand(X, Y2, B2, L0, L, R)
-    ; B = (X where Y)
-    -> b_expand(Y, Y1, [], L0),
-       f_expand(X, Y1, B2, L0, L, R)
-    ; f_expand(B, !, B2, [], L, R)
-    )
-  ),
+  b_expand(B, B2, L, R),
   succ(A, A2),
   export(Mo:F/A2).
 
@@ -66,21 +53,33 @@ define(T) :-
 define(T) :-
   assertz(fun(T)).
 
+b_expand(B, !, [], B) :-
+  var(B), !.
+b_expand(X if Y, B, L, R) :- !,
+  c_expand(Y, Y1, [], L0),
+  conj(Y1, !, Y2),
+  f_expand(X, Y2, B, L0, L, R).
+b_expand(X where Y, B, L, R) :- !,
+  c_expand(Y, Y1, [], L0),
+  f_expand(X, Y1, B, L0, L, R).
+b_expand(B0, B, L, R) :-
+  f_expand(B0, !, B, [], L, R).
+
 conj(A, true, A) :- !.
 conj(true, B, B) :- !.
 conj(A, B, (A,B)).
 
-b_expand(X, X, L, L) :-
+c_expand(X, X, L, L) :-
   var(X), !.
-b_expand((X,Y), B, L0, L) :- !,
-  b_expand(X, B1, L0, L1),
-  b_expand(Y, B2, L1, L),
+c_expand((X,Y), B, L0, L) :- !,
+  c_expand(X, B1, L0, L1),
+  c_expand(Y, B2, L1, L),
   conj(B1, B2, B).
-b_expand(X=Y, B, L0, L) :- !,
+c_expand(X=Y, B, L0, L) :- !,
   f_expand(X, true, B1, L0, L1, RX),
   f_expand(Y, B1, B2, L1, L, RY),
   conj(B2, (RX=RY), B).
-b_expand(X, X, L, L).
+c_expand(X, X, L, L).
 
 f_expand(X, Y, Y, L, L, X) :-
   var(X), !.
