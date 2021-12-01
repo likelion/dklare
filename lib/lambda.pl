@@ -85,13 +85,13 @@ user:term_expansion(H === B, Clauses) :-
   succ(Ar0, Ar1),
   H2 =.. [F|A1],
   phrase(expand_body(B, B2, R), L),
-  ( partial_application_expand(Mo:F/Ar0, PA)
+  ( expand_partial_applications(Mo:F/Ar0, PA)
   -> append(PA, [H2:-B2|L], Clauses),
      export(Mo:F/Ar1)
   ; Clauses = [H2:-B2|L]
   ).
 
-partial_application_expand(Mo:F/Ar0, PA) :-
+expand_partial_applications(Mo:F/Ar0, PA) :-
   Ar is Ar0 - 1,
   length(A, Ar),
   XX =.. [F|A],
@@ -100,17 +100,17 @@ partial_application_expand(Mo:F/Ar0, PA) :-
   append(A, [X,Y], A2),
   Body =.. [F|A2],
   append(PA0, [Head:-Body], PA),
-  partial_application_expand_(Mo:F/Ar, PA0).
+  expand_partial_applications_(Mo:F/Ar, PA0).
 
-partial_application_expand_(_:_/0, []) :- !.
-partial_application_expand_(Mo:F/Ar0, PA) :-
+expand_partial_applications_(_:_/0, []) :- !.
+expand_partial_applications_(Mo:F/Ar0, PA) :-
   Ar is Ar0 - 1,
   length(A, Ar),
   XX =.. [F|A],
   append(A, [X], A2),
   XXX =.. [F|A2],
   append(PA0, [lambda:'@'(XX,X,XXX)], PA),
-  partial_application_expand_(Mo:F/Ar, PA0).
+  expand_partial_applications_(Mo:F/Ar, PA0).
 
 expand_body(B, !, B) -->
   { var(B) }, !.
@@ -166,7 +166,7 @@ expand_expression(X, E0, E, R) -->
        ; Mo = M
        ),
        length(Args0, Ar),
-       partial_application_expand(Mo:RF/Ar, PA)
+       expand_partial_applications(Mo:RF/Ar, PA)
      },
      PA
   ; { ( XF == '@',
