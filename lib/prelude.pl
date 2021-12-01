@@ -1,6 +1,6 @@
 :- module(prelude, []).
 
-:- reexport(library(lambda)).
+:- dklare_using(library(lambda)).
 
 X+Y === Z where Z is X+Y.
 X-Y === Z where Z is X-Y.

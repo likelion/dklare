@@ -22,6 +22,7 @@ limitations under the License.
                     eval/1,
                     eval/2 ] ).
 
+:- multifile fun/1, '@'/3.
 :- discontiguous fun/1, '@'/3.
 :- dynamic fun/1, '@'/3.
 
@@ -31,12 +32,46 @@ eval(G) :-
 
 eval(G, R) :-
   prolog_load_context(module, Mo),
-  expand_expression(G, true, T, R, L, []),
+  phrase(expand_expression(G, true, T, R), L),
   Mo:maplist(assertz, L, Ref),
   call_cleanup(
     Mo:T,
     maplist(erase, Ref)
   ).
+
+user:term_expansion((:-dklare_using(Import)), Clauses) :-
+  prolog_load_context(file, File),
+  file_name_extension(Path, 'pl', File),
+  file_base_name(Path, M),
+  prolog_load_context(stream, In),
+  stream_property(In, reposition(true)),
+  !,
+  setup_call_cleanup(
+    stream_property(In, position(Pos)),
+    findall(Head, read_function(In, M, Head), Heads0),
+    set_stream_position(In, Pos)
+  ),
+  sort(Heads0, Heads),
+  ( is_list(Import)
+  -> maplist(reexport, Import, Reexport),
+     append(Reexport, Heads, Clauses)
+  ; reexport(Import, Reexport),
+    Clauses = [Reexport|Heads]
+  ).
+
+reexport(Import, (:-reexport(Import))) :-
+  use_module(Import).
+
+read_function(In, M, Head) :-
+  repeat,
+    read_term(In, Term, [syntax_errors(quiet),module(lambda)]),
+    ( Term == end_of_file
+    -> !, fail
+    ; Term = (H === _),
+      functor(H, F, A),
+      Head = lambda:fun(M:F/A)
+    ; fail
+    ).
 
 user:term_expansion(H === B, Clauses) :-
   strip_module(H, M, P),
@@ -45,28 +80,26 @@ user:term_expansion(H === B, Clauses) :-
   ; Mo = M
   ),
   P =.. [F|A0],
-  length(A0, A),
-  define(Mo:F/A, PA),
-  append(PA, [H2:-B2|L], Clauses),
+  length(A0, Ar0),
   append(A0, [R], A1),
+  succ(Ar0, Ar1),
   H2 =.. [F|A1],
   phrase(expand_body(B, B2, R), L),
-  succ(A, A2),
-  export(Mo:F/A2).
-
-define(T, []) :-
-  fun(T), !.
-define(T, PA) :-
-  assertz(fun(T)),
-  partial_application_expand(T, PA).
+  ( partial_application_expand(Mo:F/Ar0, PA)
+  -> append(PA, [H2:-B2|L], Clauses),
+     export(Mo:F/Ar1)
+  ; Clauses = [H2:-B2|L]
+  ).
 
 partial_application_expand(Mo:F/Ar0, PA) :-
   Ar is Ar0 - 1,
   length(A, Ar),
   XX =.. [F|A],
+  Head = lambda:'@'(XX,X,Y),
+  \+ clause(Head, _),
   append(A, [X,Y], A2),
-  XXX =.. [F|A2],
-  append(PA0, [lambda:'@'(XX,X,Y):-XXX], PA),
+  Body =.. [F|A2],
+  append(PA0, [Head:-Body], PA),
   partial_application_expand_(Mo:F/Ar, PA0).
 
 partial_application_expand_(_:_/0, []) :- !.
@@ -133,7 +166,7 @@ expand_expression(X, E0, E, R) -->
        ; Mo = M
        ),
        length(Args0, Ar),
-       define(Mo:RF/Ar, PA)
+       partial_application_expand(Mo:RF/Ar, PA)
      },
      PA
   ; { ( XF == '@',
