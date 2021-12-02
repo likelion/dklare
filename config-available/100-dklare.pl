@@ -34,6 +34,7 @@ prolog:message_prefix_hook(thread, Prefix) :-
 :- use_module(library(lambda)).
 :- use_module(library(prelude)).
 :- use_module(library(kb)).
+:- use_module(library(resources)).
 
 :- cp_after_load(
      ( broadcast(dklare(loading)),
