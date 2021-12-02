@@ -18,6 +18,7 @@ limitations under the License.
                     op(1100, xfx, where),
                     op(1100, xfx, if),
                     op(600, yfx, @),
+                    op(1100, fx, dklare_fun),
                     '@'/3,
                     eval/1,
                     eval/2 ] ).
@@ -61,6 +62,20 @@ user:term_expansion((:-dklare_using(Import)), Clauses) :-
 
 reexport(Import, (:-reexport(Import))) :-
   use_module(Import).
+
+user:term_expansion((:-dklare_fun(List)), Clauses) :-
+  prolog_load_context(file, File),
+  file_name_extension(Path, 'pl', File),
+  file_base_name(Path, M),
+  dklare_fun(M, List, Clauses).
+
+dklare_fun(M, F/A, [lambda:fun(M:F/A)|PA]) :- !,
+  expand_partial_applications(M:F/A, PA),
+  succ(A, A2),
+  export(M:F/A2).
+dklare_fun(M, (A,B), [FA|FB]) :-
+  dklare_fun(M, A, [FA]),
+  dklare_fun(M, B, FB).
 
 read_function(In, M, Head) :-
   repeat,

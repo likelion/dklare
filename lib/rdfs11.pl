@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 :- module(rdfs11, [ rdfs/3,
-                    rdfs_only/3
+                    rdfs_only/3,
+                    rdfs_estimate_complexity/4
                   ]).
 
 :- use_module(library(semweb/rdf11)).
@@ -32,7 +33,8 @@ limitations under the License.
             rdfs(r,r,o),
             rdfs_only(r,r,o),
             rdfi(r,r,o),
-            rdfq(r,r,o).
+            rdfq(r,r,o),
+            rdfs_estimate_complexity(r,r,o,-).
 
 :- listen(dklare(loaded),
      ( create_thread(rdfs, (set_exclusions, handle_messages)),
@@ -122,6 +124,8 @@ rdfs(S, P, O) :-
   ; rdfs_only(S, P, O)
   ).
 
+% TODO: do inferencing of rdfs:Resource, rdf:Property on the fly here
+
 rdfs_only(S, P, O) :-
   sync_message(rdfs, rdfs11:rdfs_(S, P, O), Result),
   member(rdfs11:rdfs_(S, P, O), Result).
@@ -193,6 +197,17 @@ rdfs_reinit :-
   abolish_table_subgoals(rdfs11:rdfs_(_,_,_)),
   time(ignore(rdfs_(_, _, _))),
   print_rdfs_totals(none).
+
+rdfs_estimate_complexity(S, P, O, C) :-
+  rdf_estimate_complexity(S, P, O, C0),
+  sync_message(rdfs, (
+    current_table(rdfs11:rdfs_(S, P, O), T),
+    trie_property(T, value_count(C1))
+  )),
+  ( integer(C1)
+  -> plus(C0, C1, C)
+  ; C = C0
+  ).
 
 print_rdfs_totals(Mode) :-
   Ts = count(0),
