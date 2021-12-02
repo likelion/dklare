@@ -2,6 +2,11 @@
 
 :- dklare_using(library(lambda)).
 
+:- dklare_fun not/1.
+
+not(true, false).
+not(false, true).
+
 X+Y === Z where Z is X+Y.
 X-Y === Z where Z is X-Y.
 X*Y === Z where Z is X*Y.
@@ -12,9 +17,6 @@ factorial(N) === N*factorial(N-1) where N > 0.
 
 map(_,[]) === [].
 map(F,[X|Xs]) === [F@X|map(F,Xs)].
-
-not(true) === false.
-not(false) === true.
 
 neg(L) === map(not,L).
 
