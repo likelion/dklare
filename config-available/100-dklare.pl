@@ -29,6 +29,7 @@ prolog:message_prefix_hook(thread, Prefix) :-
 
 :- use_module(library(semweb/rdf_db), [rdf_register_prefix/2]).
 :- rdf_register_prefix(d, 'http://dklare.org/2021/10/dklare#').
+:- rdf_register_prefix(v, 'http://dklare.org/2021/10/variables#').
 
 :- use_module(library(rdfs11)).
 :- use_module(library(lambda)).
