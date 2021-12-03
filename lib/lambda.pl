@@ -204,10 +204,10 @@ expand_expression(X, E, E, X) --> [].
 
 decompose_lambda([Ta], Ta, Bo0, Bo, Fr) :- !,
   term_variables(Ta, F0),
-  without(F0, Bo0, Fr),
+  term_variables(Bo0, Bo1),
+  without(F0, Bo1, Fr),
   reverse(Bo0, Bo).
 decompose_lambda([H|T], Ta, L0, B, F) :-
-  var(H),
   decompose_lambda(T, Ta, [H|L0], B, F).
 
 without([], _, []) :- !.
