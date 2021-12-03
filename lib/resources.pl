@@ -85,9 +85,10 @@ read_lambda(Functor, Arity, IRI, Lambda) :-
   read_expression(Exp, E),
   ( resource([rdfs(IRI,d:con,Con)]),
     read_expression(Con, C)
-  -> Lambda = '==='(Head,'where'(E,C))
-  ; Lambda = '==='(Head,E)
-  ).
+  -> Lambda0 = '==='(Head,'where'(E,C))
+  ; Lambda0 = '==='(Head,E)
+  ),
+  varnumbers_names(Lambda0, Lambda, _).
 
 read_expression(IRI, Expression) :-
   ( atom(IRI)
