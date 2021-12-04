@@ -126,10 +126,10 @@ read_application(IRI, Application) :-
   resource([rdf(IRI,rdf:first,First,_),
             rdf(IRI,rdf:rest,Rest,_)]),
   read_args(Rest, Args),
-  read_expression(First, Functor),
-  ( compound(Functor)
-  -> Application =.. ['@',Functor|Args]
-  ; Application =.. [Functor|Args]
+  read_expression(First, Expression),
+  ( compound(Expression)
+  -> Application =.. ['@',Expression|Args]
+  ; Application =.. [Expression|Args]
   ).
 
 read_args(rdf:nil, []) :- !.

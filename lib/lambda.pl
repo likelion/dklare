@@ -139,8 +139,12 @@ expand_body(X where Y, B, R) --> !,
 expand_body(B0, B, R) -->
   expand_expression(B0, !, B, R).
 
-conj(A, true, A) :- !.
-conj(true, B, B) :- !.
+conj(A, B, A) :-
+  nonvar(B),
+  B == true, !.
+conj(A, B, B) :-
+  nonvar(A),
+  A == true, !.
 conj(A, B, (A,B)).
 
 expand_condition(X, X) -->
