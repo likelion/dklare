@@ -24,46 +24,76 @@ limitations under the License.
             read_expression(r, -),
             read_application(r, -),
             read_args(r, -),
+            graph_triple(t),
+            reset_graph(t, -),
             variable(r, -, r),
             literal(o, -, -).
 
 resource(Triples) :-
+  resource(Triples, false).
+
+resource(Triples, Optional) :-
   triplesort(Triples, SortedTriples),
-  match(SortedTriples).
+  match(SortedTriples, Optional).
 
 triplesort([], []) :- !.
 triplesort(Triples, SortedTriples) :-
-  maplist(check_type, Triples),
-  maplist(estimate, Triples, EstimatedTriples),
+  maplist(check_type, Triples, CheckedTriples),
+  maplist(estimate, CheckedTriples, EstimatedTriples),
   keysort(EstimatedTriples, SortedTriples).
 
-check_type(_-rdfs(S,P,_)) :- !,
-  check_type(rdf(S,P,_,_)).
-check_type(rdfs(S,P,_)) :- !,
-  check_type(rdf(S,P,_,_)).
-check_type(_-rdf(S,P,_,G)) :- !,
-  check_type(rdf(S,P,_,G)).
-check_type(rdf(S,P,_,G)) :-
-  ( var(S) ; atom(S) ), !,
-  ( var(P) ; ( atom(P), \+ rdf_is_bnode(P) ) ), !,
+check_type(rdf(S,P,O), rdf(S,P,O)) :- !,
+  var_or_atom(S),
+  var_or_atom(P), \+ rdf_is_bnode(P).
+check_type(_-rdf(S,P,O), T) :- !,
+  check_type(rdf(S,P,O), T).
+check_type(rdf(S,P,O,G), rdf(S,P,O,G)) :- !,
+  var_or_atom(S),
+  var_or_atom(P), \+ rdf_is_bnode(P),
+  maplist(var_or_atom, G).
+check_type(_-rdf(S,P,O,G), T) :- !,
+  check_type(rdf(S,P,O,G), T).
+check_type(rdfs(S,P,O), rdfs(S,P,O)) :- !,
+  var_or_atom(S),
+  var_or_atom(P), \+ rdf_is_bnode(P).
+check_type(_-rdfs(S,P,O), T) :- !,
+  check_type(rdfs(S,P,O), T).
+check_type(optional(X), optional(X)) :- !.
+check_type(_-optional(X), optional(X)) :- !.
+
+var_or_atom(G) :-
   ( var(G) ; atom(G) ), !.
 
-estimate(rdf(S,P,O,G), C-rdf(S,P,O,G)) :- !,
+estimate(rdf(S,P,O), C-rdf(S,P,O)) :-
   rdf_estimate_complexity(S, P, O, C).
-estimate(_-rdf(S,P,O,G), C-rdf(S,P,O,G)) :- !,
+estimate(rdf(S,P,O,G), C-rdf(S,P,O,G)) :-
+  % TODO: sort G also
   rdf_estimate_complexity(S, P, O, C).
-estimate(rdfs(S,P,O), C-rdfs(S,P,O)) :- !,
+estimate(rdfs(S,P,O), C-rdfs(S,P,O)) :-
   rdfs_estimate_complexity(S, P, O, C).
-estimate(_-rdfs(S,P,O), C-rdfs(S,P,O)) :-
-  rdfs_estimate_complexity(S, P, O, C).
+estimate(optional(X), a-optional(X)).
 
-match([]) :- !.
-match([_-Triple]) :- !,
-  Triple.
-match([_-Triple|T]) :- !,
-  Triple,
+match([], _) :- !.
+match([_-Triple], Optional) :- !,
+  match_triple(Triple, Optional).
+match([_-Triple|T], Optional) :- !,
+  match_triple(Triple, Optional),
   triplesort(T, SortedT),
-  match(SortedT).
+  match(SortedT, Optional).
+
+match_triple(optional(X), _) :-
+  resource(X, true).
+match_triple(rdf(S,P,O,G), Optional) :-
+  match_triple(rdf(S,P,O), G, Optional).
+match_triple(rdf(S,P,O), Optional) :-
+  ( rdf(S,P,O) *-> true ; Optional ).
+match_triple(rdfs(S,P,O), Optional) :-
+  ( rdfs(S,P,O) *-> true ; Optional ).
+
+match_triple(_, [], _) :- !.
+match_triple(X, [H|T], Optional) :-
+  ( call(X, H) *-> true ; Optional ),
+  match_triple(X, T, Optional).
 
 read_function(IRI, Functor, Arity, Functions) :-
   resource([ rdfs(IRI,rdf:type,d:'Function'),
@@ -92,15 +122,15 @@ read_lambda(Functor, Arity, IRI, Lambda) :-
 
 read_expression(IRI, Expression) :-
   ( atom(IRI)
-  -> ( variable(IRI, Expression, v:'')
-     -> true
+  -> ( variable(IRI, '$VAR'(V), v:'')
+     -> Expression = '$VAR'(V)
      ; ( resource([ rdfs(IRI,rdf:type,d:'Function'),
                     rdfs(IRI,d:functor,^^(FS,_)) ])
        -> atom_string(Expression, FS)
        ; read_application(IRI, Expression)
        -> true
        ; rdf_is_bnode(IRI)
-       -> phrase(read_pattern(IRI, _), Expression)
+       -> phrase(read_pattern(IRI, _, _{type:rdf}), Expression)
        ; Expression = IRI
        )
      )
@@ -114,7 +144,13 @@ read_expression(IRI, Expression) :-
   ).
 
 variable(IRI, '$VAR'(V), Prefix) :-
-  atom_concat(Prefix, V, IRI).
+  atom(IRI),
+  atom_concat(Prefix, V0, IRI), !,
+  ( V0 == '_'
+  -> gensym('$ANON_', V)
+  ; V = V0
+  ).
+variable(O, O, _).
 
 literal(^^(S, xsd:string), S, string) :- !.
 literal(@(S, _), S, string) :- !.
@@ -123,8 +159,8 @@ literal(^^(N, _), N, number) :-
 
 read_application(rdf:nil, []) :- !.
 read_application(IRI, Application) :-
-  resource([rdf(IRI,rdf:first,First,_),
-            rdf(IRI,rdf:rest,Rest,_)]),
+  resource([rdf(IRI,rdf:first,First),
+            rdf(IRI,rdf:rest,Rest)]),
   read_args(Rest, Args),
   read_expression(First, Expression),
   ( compound(Expression)
@@ -134,46 +170,97 @@ read_application(IRI, Application) :-
 
 read_args(rdf:nil, []) :- !.
 read_args(IRI, [H|T]) :-
-  resource([rdf(IRI,rdf:first,First,_),
-            rdf(IRI,rdf:rest,Rest,_)]),
+  resource([rdf(IRI,rdf:first,First),
+            rdf(IRI,rdf:rest,Rest)]),
   read_expression(First, H),
   read_args(Rest, T).
 
-read_pattern(IRI, Id) -->
-  { findall(P-O, resource([rdf(IRI,P,O,_)]), POs) },
-  read_triples(IRI, Id, POs).
+read_pattern(IRI, Id, Context0) -->
+  { findall(P-O, resource([rdf(IRI,P,O)]), POs0),
+    partition(graph_triple, POs0, GTs, POs),
+    ( GTs == []
+    -> Context = Context0
+    ; ( reset_graph('-'(_,v:'_'), GTs)
+      -> ( del_dict(graphs, Context0, _, Context)
+         -> true
+         ; Context = Context0
+         )
+      ; maplist(extract_graph, GTs, Graphs),
+        put_dict(graphs, Context0, Graphs, Context)
+      )
+    )
+  },
+  read_triples(Id, POs, Context).
 
-read_triples(_, _, []) --> !.
+graph_triple('-'(d:graph,_)).
 
-read_triples(IRI, Id, [P-O|T]) -->
+reset_graph(R, Gs) :-
+  memberchk(R, Gs).
+
+extract_graph(_-L, G) :-
+  atom(L), !,
+  variable(L, G, v:'').
+extract_graph(_-L, G) :-
+  literal(L, S, string),
+  atom_string(G, S).
+
+read_triples(_, [], _) --> !.
+
+read_triples(Id, [P-O|T], Context) -->
+  { rdf_equal(d:id, P), !,
+    atom(O),
+    \+ rdf_is_bnode(O),
+    variable(O, Id, v:'')
+  },
+  read_triples(Id, T, Context).
+
+read_triples(Id, [P-O|T], Context0) -->
+  { rdf_global_id(d:Type, P),
+    memberchk(Type, [rdf,rdfs]),
+    rdf_is_bnode(O),
+    put_dict(type, Context0, Type, Context)
+  }, !,
+  read_pattern(O, Id0, Context),
+  { ( var(Id0)
+    -> Id = Id0
+    ; true
+    )
+  },
+  read_triples(Id, T, Context).
+
+read_triples(Id, [P-O|T], Context) -->
+  { rdf_equal(d:optional, P),
+    rdf_is_bnode(O), !,
+    phrase(read_pattern(O, Id0, Context), Optional),
+    ( var(Id0)
+    -> Id = Id0
+    ; true
+    )
+  },
+  [optional(Optional)],
+  read_triples(Id, T, Context).
+
+read_triples(Id, [P-O|T], Context) -->
   { rdf_is_bnode(O), !,
-    ( variable(P, PV, v:'')
-    -> true
-    ; PV = P
-    )
+    variable(P, PV, v:''),
+    triple_term(Id, PV, OV, Context, Term)
   },
-  [t(Id, PV, OId)],
-  read_pattern(O, OId),
-  read_triples(IRI, Id, T).
+  [Term],
+  read_pattern(O, OV, Context),
+  read_triples(Id, T, Context).
 
-read_triples(IRI, Id, [P-O|T]) -->
-  { rdf_global_id(d:id, P), !,
-    ( variable(O, Id, v:'')
-     -> true
-    ; Id = O
-    )
+read_triples(Id, [P-O|T], Context) -->
+  { variable(P, PV, v:''),
+    variable(O, OV, v:''),
+    triple_term(Id, PV, OV, Context, Term)
   },
-  read_triples(IRI, Id, T).
+  [Term],
+  read_triples(Id, T, Context).
 
-read_triples(IRI, Id, [P-O|T]) -->
-  { ( variable(P, PV, v:'')
-    -> true
-    ; PV = P
-    ),
-    ( variable(O, OV, v:'')
-    -> true
-    ; OV = O
-    )
-  },
-  [t(Id, PV, OV)],
-  read_triples(IRI, Id, T).
+triple_term(S,P,O,Context,Term) :-
+  get_dict(type, Context, Type),
+  ( get_dict(graphs, Context, Graphs)
+  -> Type == rdf,
+     Term =.. [Type,S,P,O,Graphs]
+  ; Term =.. [Type,S,P,O]
+  ).
