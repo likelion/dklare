@@ -62,7 +62,7 @@ check_type(optional(X), optional(X)) :- !.
 check_type(_-optional(X), optional(X)) :- !.
 
 var_or_atom(G) :-
-  ( var(G) ; atom(G) ), !.
+  ( var(G) ; atom(G) ).
 
 estimate(rdf(S,P,O), C-rdf(S,P,O)) :-
   rdf_estimate_complexity(S, P, O, C).
@@ -130,7 +130,10 @@ read_expression(IRI, Expression) :-
        ; read_application(IRI, Expression)
        -> true
        ; rdf_is_bnode(IRI)
-       -> phrase(read_pattern(IRI, _, _{type:rdf}), Expression)
+       -> phrase(read_pattern(IRI, _, _{type:rdf}), Triples0),
+          varnumbers_names(Triples0, Triples1, Vars),
+          ground_not(Triples1, Expression),
+          varnumbers_vars(Vars)
        ; Expression = IRI
        )
      )
@@ -142,6 +145,11 @@ read_expression(IRI, Expression) :-
     ; literal(IRI, Expression, number)
     )
   ).
+
+varnumbers_vars([]) :- !.
+varnumbers_vars([Var=V|T]) :-
+  V = '$VAR'(Var),
+  varnumbers_vars(T).
 
 variable(IRI, '$VAR'(V), Prefix) :-
   atom(IRI),
@@ -229,6 +237,18 @@ read_triples(Id, [P-O|T], Context0) -->
   read_triples(Id, T, Context).
 
 read_triples(Id, [P-O|T], Context) -->
+  { rdf_equal(d:not, P),
+    rdf_is_bnode(O), !,
+    phrase(read_pattern(O, Id0, Context), Not),
+    ( var(Id0)
+    -> Id = Id0
+    ; true
+    )
+  },
+  [not(Not)],
+  read_triples(Id, T, Context).
+
+read_triples(Id, [P-O|T], Context) -->
   { rdf_equal(d:optional, P),
     rdf_is_bnode(O), !,
     phrase(read_pattern(O, Id0, Context), Optional),
@@ -264,3 +284,22 @@ triple_term(S,P,O,Context,Term) :-
      Term =.. [Type,S,P,O,Graphs]
   ; Term =.. [Type,S,P,O]
   ).
+
+ground_not(Triples0, Triples) :-
+  term_variables(Triples0, Vs),
+  term_singletons(Triples0, Ss),
+  ord_subtract(Vs, Ss, Vars),
+  ground_not_(Triples0, Triples, Vars, false).
+
+ground_not_([], [], _, _) :- !.
+ground_not_([not(H)|T], Ts, Vars, Not) :- !,
+  ( Not -> Not1 = false ; Not1 = true ),
+  ground_not_(H, H2, Vars, Not1),
+  append(H2, T2, Ts),
+  ground_not_(T, T2, Vars, Not).
+ground_not_([H|T], [H|T2], Vars, false) :- !,
+  ground_not_(T, T2, Vars, false).
+ground_not_([H|T], [not(H,G)|T2], Vars, true) :-
+  term_variables(H, Vs),
+  ord_intersection(Vs, Vars, G),
+  ground_not_(T, T2, Vars, true).
