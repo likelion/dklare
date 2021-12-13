@@ -159,11 +159,6 @@ read_expression(IRI, Expression) :-
     )
   ).
 
-varnumbers_vars([]) :- !.
-varnumbers_vars([Var=V|T]) :-
-  V = '$VAR'(Var),
-  varnumbers_vars(T).
-
 variable(IRI, '$VAR'(V), Prefix) :-
   atom(IRI),
   atom_concat(Prefix, V0, IRI), !,
@@ -319,3 +314,8 @@ ground_not_([not(H)|T], [not(H,G)|T2], Vars) :- !,
   ground_not_(T, T2, Vars).
 ground_not_([H|T], [H|T2], Vars) :- !,
   ground_not_(T, T2, Vars).
+
+varnumbers_vars([]) :- !.
+varnumbers_vars([Var=V|T]) :-
+  V = '$VAR'(Var),
+  varnumbers_vars(T).

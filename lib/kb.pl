@@ -14,12 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-:- module(kb, [load_knowledge/0]).
+:- module(kb, [bootstrap/0,
+               load_knowledge/0]).
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(semweb/turtle)).
 :- use_module(library(settings)).
 :- use_module(library(utils)).
+
+bootstrap :-
+  catch(
+    rdf_load('dklare.ttl', [graph(dklare),register_namespaces(true)]),
+    _,
+    true
+  ).
 
 load_knowledge :-
   setting(dklare:knowledge_path, Prefix0),

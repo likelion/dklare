@@ -38,7 +38,8 @@ prolog:message_prefix_hook(thread, Prefix) :-
 :- use_module(library(resources)).
 
 :- cp_after_load(
-     ( broadcast(dklare(loading)),
+     ( bootstrap,
+       broadcast(dklare(loading)),
        load_knowledge,
        broadcast(dklare(loaded))
      )
