@@ -182,8 +182,8 @@ read_application(rdf:nil, []) :- !.
 read_application(IRI, Application) :-
   resource([rdf(IRI,rdf:first,First),
             rdf(IRI,rdf:rest,Rest)]),
-  read_args(Rest, Args),
   read_expression(First, Expression),
+  read_args(Rest, Args),
   ( compound(Expression)
   -> Application =.. ['@',Expression|Args]
   ; Application =.. [Expression|Args]
@@ -197,6 +197,10 @@ read_args(IRI, [H|T]) :-
   read_args(Rest, T).
 
 read_pattern(IRI, Pattern) :-
+  once((
+    rdf_is_bnode(IRI)
+  ; resource([rdfs(IRI,rdf:type,d:'Pattern')])
+  )),
   phrase(read_pattern(IRI, _, _{type:rdf,not:false,optional:false}), Triples0),
   varnumbers_names(Triples0, Triples1, Vars),
   ground_not(Triples1, Pattern),
