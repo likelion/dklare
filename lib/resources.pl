@@ -53,6 +53,7 @@ check_type(rdfs(S,P,O), rdfs(S,P,O)) :-
   check_subject_predicate(S, P).
 check_type(not(X,Y), not(X,Y)) :-
   check_type(X, X).
+check_type(not_pattern(X), not_pattern(X)).
 check_type(optional(X), optional(X)) :-
   check_type(X, X).
 check_type(_-X, Y) :-
@@ -75,9 +76,16 @@ estimate(rdf(S,P,O,G), C-rdf(S,P,O,G)) :-
   rdf_estimate_complexity(S, P, O, C).
 estimate(rdfs(S,P,O), C-rdfs(S,P,O)) :-
   rdfs_estimate_complexity(S, P, O, C).
-estimate(not(X,Y), 1-not(X,Y)) :-
-  ground(Y), !.
-estimate(not(X,Y), n-not(X,Y)).
+estimate(not(X,Y), C-not(X,Y)) :-
+  ( ground(Y)
+  -> C = 1
+  ; C = n
+  ).
+estimate(not_pattern(X), C-not_pattern(X)) :-
+  ( ground(X)
+  -> C = 0
+  ; C = m
+  ).
 estimate(optional(X), o-C-optional(X)) :-
   estimate(X, C-X).
 
@@ -95,6 +103,8 @@ match_triple(not(X,G), _) :-
   ; instantiation_error(G)
   ),
   \+ match_triple(X, false).
+match_triple(not_pattern(S), _) :-
+  \+ rdfs(S, rdf:type, d:'Pattern').
 match_triple(optional(X), _) :-
   match_triple(X, true).
 match_triple(rdf(S,P,O,G), Optional) :-
@@ -105,19 +115,19 @@ match_triple(rdfs(S,P,O), Optional) :-
   ( rdfs(S,P,O) *-> true ; Optional ).
 
 match_triple(_, [], _) :- !.
-match_triple(X, [H], Optional) :- !,
-  ( call(X, H) *-> true ; Optional ).
-match_triple(X, [H|T], Optional) :-
-  ( call(X, H) *-> true ; Optional ),
-  match_triple(X, T, Optional).
+match_triple(rdf(S,P,O), [H], Optional) :- !,
+  ( rdf(S,P,O,H) *-> true ; Optional ).
+match_triple(rdf(S,P,O), [H|T], Optional) :-
+  ( rdf(S,P,O,H) *-> true ; Optional ),
+  match_triple(rdf(S,P,O), T, Optional).
 
 read_function(IRI, Functor, Arity, Clauses) :-
   resource([rdfs(IRI,rdf:type,d:'Function'),
             rdfs(IRI,d:define,Lambda),
-            optional(rdfs(IRI,d:functor,^^(FS,_)))]),
-  ( var(FS)
-  -> Functor = IRI
-  ; atom_string(Functor, FS)
+            optional(rdfs(IRI,d:functor,FS))]),
+  ( literal(FS, Functor, string)
+  -> true
+  ; Functor = IRI
   ),
   ( rdf_list(Lambda)
   -> rdf_list(Lambda, Lambdas),
@@ -127,21 +137,21 @@ read_function(IRI, Functor, Arity, Clauses) :-
   ).
 
 read_lambda(Functor, Arity, IRI, Clause) :-
-  ( resource([rdfs(IRI,d:given,Args)])
+  ( rdfs(IRI, d:given, Args)
   -> read_args(Args, A),
      Head =.. [Functor|A],
      length(A, Arity)
   ; Head = Functor,
     Arity = 0
   ),
-  ( resource([rdfs(IRI,d:return,Exp)])
+  ( rdfs(IRI, d:return, Exp)
   -> read_expression(Exp, E)
   ; E = true
   ),
-  ( resource([rdfs(IRI,d:where,Where)])
+  ( rdfs(IRI, d:where, Where)
   -> read_expression(Where, C),
      Clause0 = '==='(Head, where(E,C))
-  ; resource([rdfs(IRI,d:once,Once)])
+  ; rdfs(IRI, d:once, Once)
   -> read_expression(Once, C),
      Clause0 = '==='(Head,if(E,C))
   ; Clause0 = '==='(Head,E)
@@ -159,9 +169,9 @@ read_expression(IRI, Expression) :-
      ; Expression = IRI
      )
   ; ( literal(IRI, FS, string)
-    -> ( FS == "[]"
+    -> ( FS == '[]'
        -> Expression = []
-       ; atom_string(Expression, FS)
+       ; Expression = FS
        )
     ; literal(IRI, Expression, number)
     )
@@ -176,15 +186,19 @@ variable(IRI, '$VAR'(V), Prefix) :-
   ).
 variable(O, O, _).
 
-literal(^^(S, xsd:string), S, string) :- !.
-literal(@(S, _), S, string) :- !.
+literal(^^(S, xsd:string), A, string) :- !,
+  string(S),
+  atom_string(A, S).
+literal(@(S, _), A, string) :- !,
+  string(S),
+  atom_string(A, S).
 literal(^^(N, _), N, number) :-
   number(N).
 
 read_application(rdf:nil, []) :- !.
 read_application(IRI, Application) :-
-  resource([rdf(IRI,rdf:first,First),
-            rdf(IRI,rdf:rest,Rest)]),
+  rdf(IRI, rdf:first, First),
+  rdf(IRI, rdf:rest, Rest),
   read_expression(First, Expression),
   read_args(Rest, Args),
   ( compound(Expression)
@@ -194,8 +208,8 @@ read_application(IRI, Application) :-
 
 read_args(rdf:nil, []) :- !.
 read_args(IRI, [H|T]) :-
-  resource([rdf(IRI,rdf:first,First),
-            rdf(IRI,rdf:rest,Rest)]),
+  rdf(IRI, rdf:first, First),
+  rdf(IRI, rdf:rest, Rest),
   !,
   read_expression(First, H),
   read_args(Rest, T).
@@ -205,7 +219,7 @@ read_args(IRI, [E]) :-
 read_pattern(IRI, Pattern) :-
   once((
     rdf_is_bnode(IRI)
-  ; resource([rdfs(IRI,rdf:type,d:'Pattern')])
+  ; rdfs(IRI, rdf:type, d:'Pattern')
   )),
   phrase(read_pattern(IRI, _, _{type:rdf,not:false,optional:false}), Triples0),
   varnumbers_names(Triples0, Triples1, Vars),
@@ -213,7 +227,7 @@ read_pattern(IRI, Pattern) :-
   varnumbers_vars(Vars).
 
 read_pattern(IRI, Id, Context0) -->
-  { findall(P-O, resource([rdf(IRI,P,O)]), POs0),
+  { findall(P-O, rdf(IRI, P, O), POs0),
     partition(graph_triple, POs0, GTs, POs),
     ( GTs == []
     -> Context = Context0
@@ -238,8 +252,7 @@ extract_graph(_-L, G) :-
   atom(L), !,
   variable(L, G, v:'').
 extract_graph(_-L, G) :-
-  literal(L, S, string),
-  atom_string(G, S).
+  literal(L, G, string).
 
 read_triples(_, [], _) --> !.
 
@@ -316,15 +329,24 @@ ground_not(Triples0, Triples) :-
   term_variables(Triples0, Vs),
   term_singletons(Triples0, Ss),
   ord_subtract(Vs, Ss, Vars),
-  ground_not_(Triples0, Triples, Vars).
+  ground_not_(Triples0, Triples1, Vars, [], Checks),
+  append(Triples1, Checks, Triples).
 
-ground_not_([], [], _) :- !.
-ground_not_([not(H)|T], [not(H,G)|T2], Vars) :- !,
+ground_not_([], [], _, C, C) :- !.
+ground_not_([not(H)|T], [not(H,G)|T2], Vars, C0, C) :- !,
   term_variables(H, Vs),
   ord_intersection(Vs, Vars, G),
-  ground_not_(T, T2, Vars).
-ground_not_([H|T], [H|T2], Vars) :- !,
-  ground_not_(T, T2, Vars).
+  ground_not_(T, T2, Vars, C0, C).
+ground_not_([H|T], [H|T2], Vars, C0, C) :- !,
+  H =.. [F,S|_],
+  memberchk(F, [rdf,rdfs]),
+  ( memberchk(not_pattern(S), C0)
+  -> C1 = C0
+  ; C1 = [not_pattern(S)|C0]
+  ),
+  ground_not_(T, T2, Vars, C1, C).
+ground_not_([H|T], [H|T2], Vars, C0, C) :- !,
+  ground_not_(T, T2, Vars, C0, C).
 
 varnumbers_vars([]) :- !.
 varnumbers_vars([Var=V|T]) :-
