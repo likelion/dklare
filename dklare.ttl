@@ -17,18 +17,6 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix    d: <http://dklare.org/2021/10/dklare#> .
 
-d:arg
-  a rdf:Property ;
-  rdfs:domain d:Lambda .
-
-d:exp
-  a rdf:Property ;
-  rdfs:domain d:Lambda .
-
-d:con
-  a rdf:Property ;
-  rdfs:domain d:Lambda .
-
 d:define
   a rdf:Property ;
   rdfs:domain d:Function .
@@ -37,22 +25,46 @@ d:functor
   a rdf:Property ;
   rdfs:domain d:Function .
 
-d:rdf
+d:given
   a rdf:Property ;
-  rdfs:domain d:Pattern .
+  rdfs:domain d:Lambda .
 
-d:rdfs
+d:return
   a rdf:Property ;
-  rdfs:domain d:Pattern .
+  rdfs:domain d:Lambda .
 
-d:not
+d:where
   a rdf:Property ;
-  rdfs:domain d:Pattern .
+  rdfs:domain d:Lambda .
 
-d:optional
+d:once
   a rdf:Property ;
-  rdfs:domain d:Pattern .
+  rdfs:domain d:Lambda .
 
 d:id
   a rdf:Property ;
   rdfs:domain d:Pattern .
+
+d:graph
+  a rdf:Property ;
+  rdfs:domain d:Pattern .
+
+d:rdf
+  a rdf:Property ;
+  rdfs:domain d:Pattern ;
+  rdfs:range d:Pattern .
+
+d:rdfs
+  a rdf:Property ;
+  rdfs:domain d:Pattern ;
+  rdfs:range d:Pattern .
+
+d:not
+  a rdf:Property ;
+  rdfs:domain d:Pattern ;
+  rdfs:range d:Pattern .
+
+d:optional
+  a rdf:Property ;
+  rdfs:domain d:Pattern ;
+  rdfs:range d:Pattern .

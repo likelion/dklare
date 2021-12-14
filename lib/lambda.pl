@@ -16,7 +16,7 @@ limitations under the License.
 
 :- module(lambda, [ op(1200, xfx, ===),
                     op(1100, xfx, where),
-                    op(1100, xfx, if),
+                    op(1100, xfx, once),
                     op(600, yfx, @),
                     op(1100, fx, dklare_fun),
                     '@'/3,
@@ -63,19 +63,25 @@ user:term_expansion((:-dklare_using(Import)), Clauses) :-
 reexport(Import, (:-reexport(Import))) :-
   use_module(Import).
 
-user:term_expansion((:-dklare_fun(List)), Clauses) :-
+user:term_expansion((:-dklare_fun(Conj)), Clauses) :-
   prolog_load_context(file, File),
   file_name_extension(Path, 'pl', File),
   file_base_name(Path, M),
-  dklare_fun(M, List, Clauses).
+  dklare_fun(M, Conj, Clauses).
 
-dklare_fun(M, F/A, [lambda:fun(M:F/A)|PA]) :- !,
+dklare_fun(M, (A,B), FAB) :- !,
+  dklare_fun(M, A, FA),
+  append(FA,FB,FAB),
+  dklare_fun(M, B, FB).
+dklare_fun(_, M:F, PA) :- !,
+  dklare_fun_(M, F, PA).
+dklare_fun(M, F, PA) :- !,
+  dklare_fun_(M, F, PA).
+
+dklare_fun_(M, F/A, [lambda:fun(M:F/A)|PA]) :-
   expand_partial_applications(M:F/A, PA),
   succ(A, A2),
   export(M:F/A2).
-dklare_fun(M, (A,B), [FA|FB]) :-
-  dklare_fun(M, A, [FA]),
-  dklare_fun(M, B, FB).
 
 read_function(In, M, Head) :-
   repeat,
@@ -129,7 +135,7 @@ expand_partial_applications_(Mo:F/Ar0, PA) :-
 
 expand_body(B, !, B) -->
   { var(B) }, !.
-expand_body(X if Y, B, R) --> !,
+expand_body(X once Y, B, R) --> !,
   expand_condition(Y, Y1),
   { conj(Y1, !, Y2) },
   expand_expression(X, Y2, B, R).

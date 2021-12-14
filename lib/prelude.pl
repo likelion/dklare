@@ -12,10 +12,10 @@ X-Y === Z where Z is X-Y.
 X*Y === Z where Z is X*Y.
 X/Y === Z where Z is X/Y.
 
-X>Y === true if X>Y.
+X>Y === true once X>Y.
 _>_ === false.
 
-X<Y === true if X<Y.
+X<Y === true once X<Y.
 _<_ === false.
 
 factorial(0) === 1.
@@ -33,7 +33,7 @@ map(F,[X|Xs]) === [F@X|map(F,Xs)].
 neg(L) === map(not,L).
 
 filter(_,[]) === [].
-filter(P,[X|Xs]) === [X|filter(P,Xs)] if P@X=true.
+filter(P,[X|Xs]) === [X|filter(P,Xs)] once P@X=true.
 filter(P,[_|Xs]) === filter(P,Xs).
 
 foldr(_,[],E) === E.

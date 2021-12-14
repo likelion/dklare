@@ -127,15 +127,23 @@ read_function(IRI, Functor, Arity, Clauses) :-
   ).
 
 read_lambda(Functor, Arity, IRI, Clause) :-
-  resource([rdfs(IRI,d:arg,Args)]),
-  read_args(Args, A),
-  Head =.. [Functor|A],
-  length(A, Arity),
-  resource([rdfs(IRI,d:exp,Exp)]),
-  read_expression(Exp, E),
-  ( resource([rdfs(IRI,d:con,Con)]),
-    read_expression(Con, C)
-  -> Clause0 = '==='(Head,'where'(E,C))
+  ( resource([rdfs(IRI,d:given,Args)])
+  -> read_args(Args, A),
+     Head =.. [Functor|A],
+     length(A, Arity)
+  ; Head = Functor,
+    Arity = 0
+  ),
+  ( resource([rdfs(IRI,d:return,Exp)])
+  -> read_expression(Exp, E)
+  ; E = true
+  ),
+  ( resource([rdfs(IRI,d:where,Where)])
+  -> read_expression(Where, C),
+     Clause0 = '==='(Head, where(E,C))
+  ; resource([rdfs(IRI,d:once,Once)])
+  -> read_expression(Once, C),
+     Clause0 = '==='(Head,if(E,C))
   ; Clause0 = '==='(Head,E)
   ),
   varnumbers_names(Clause0, Clause, _).
@@ -188,8 +196,11 @@ read_args(rdf:nil, []) :- !.
 read_args(IRI, [H|T]) :-
   resource([rdf(IRI,rdf:first,First),
             rdf(IRI,rdf:rest,Rest)]),
+  !,
   read_expression(First, H),
   read_args(Rest, T).
+read_args(IRI, [E]) :-
+  read_expression(IRI, E).
 
 read_pattern(IRI, Pattern) :-
   once((
@@ -287,9 +298,9 @@ not(false, true).
 
 triple_term(S,P,O,Context,Term) :-
   get_dict(type, Context, Type),
-  ( get_dict(graphs, Context, Graphs)
-  -> Type == rdf,
-     Term0 =.. [Type,S,P,O,Graphs]
+  ( get_dict(graphs, Context, Graphs),
+    Type == rdf
+  -> Term0 =.. [Type,S,P,O,Graphs]
   ; Term0 =.. [Type,S,P,O]
   ),
   ( get_dict(not, Context, true)
