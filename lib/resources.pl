@@ -21,6 +21,7 @@ limitations under the License.
 
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(rdfs11)).
+:- use_module(library(literals)).
 
 :- rdf_meta resource(t),
             read_function(r, -, -, -),
@@ -31,7 +32,6 @@ limitations under the License.
             graph_triple(t),
             reset_graph(t, -),
             variable(r, -, r),
-            literal(o, -, -),
             read_modifier(r, -, -).
 
 resource(Triples) :-
@@ -109,25 +109,25 @@ match_triple(optional(X), _) :-
   match_triple(X, true).
 match_triple(rdf(S,P,O,G), Optional) :-
   match_triple(rdf(S,P,O), G, Optional).
-match_triple(rdf(S,P,O), Optional) :-
-  ( rdf(S,P,O) *-> true ; Optional ).
-match_triple(rdfs(S,P,O), Optional) :-
-  ( rdfs(S,P,O) *-> true ; Optional ).
+match_triple(rdf(S,P,OT), Optional) :-
+  ( rdf(S,P,O) *-> object_to_term(O, OT) ; Optional ).
+match_triple(rdfs(S,P,OT), Optional) :-
+  ( rdfs(S,P,O) *-> object_to_term(O, OT) ; Optional ).
 
 match_triple(_, [], _) :- !.
-match_triple(rdf(S,P,O), [H], Optional) :- !,
-  ( rdf(S,P,O,H) *-> true ; Optional ).
-match_triple(rdf(S,P,O), [H|T], Optional) :-
-  ( rdf(S,P,O,H) *-> true ; Optional ),
+match_triple(rdf(S,P,OT), [H], Optional) :- !,
+  ( rdf(S,P,O,H) *-> object_to_term(O, OT) ; Optional ).
+match_triple(rdf(S,P,OT), [H|T], Optional) :-
+  ( rdf(S,P,O,H) *-> object_to_term(O, OT) ; Optional ),
   match_triple(rdf(S,P,O), T, Optional).
 
 read_function(IRI, Functor, Arity, Clauses) :-
   resource([rdfs(IRI,rdf:type,d:'Function'),
             rdfs(IRI,d:define,Lambda),
             optional(rdfs(IRI,d:functor,FS))]),
-  ( literal(FS, Functor, string)
-  -> true
-  ; Functor = IRI
+  ( var(FS)
+  -> Functor = IRI
+  ; atom_string(Functor, FS)
   ),
   ( rdf_list(Lambda)
   -> rdf_list(Lambda, Lambdas),
@@ -168,12 +168,10 @@ read_expression(IRI, Expression) :-
      -> true
      ; Expression = IRI
      )
-  ; ( literal(IRI, FS, string)
-    -> ( FS == '[]'
-       -> Expression = []
-       ; Expression = FS
-       )
-    ; literal(IRI, Expression, number)
+  ; literal_term_type(IRI, Term, _),
+    ( Term == '[]'
+    -> Expression = []
+    ; Expression = Term
     )
   ).
 
@@ -185,15 +183,6 @@ variable(IRI, '$VAR'(V), Prefix) :-
   ; V = V0
   ).
 variable(O, O, _).
-
-literal(^^(S, xsd:string), A, string) :- !,
-  string(S),
-  atom_string(A, S).
-literal(@(S, _), A, string) :- !,
-  string(S),
-  atom_string(A, S).
-literal(^^(N, _), N, number) :-
-  number(N).
 
 read_application(rdf:nil, []) :- !.
 read_application(IRI, Application) :-
@@ -252,7 +241,7 @@ extract_graph(_-L, G) :-
   atom(L), !,
   variable(L, G, v:'').
 extract_graph(_-L, G) :-
-  literal(L, G, string).
+  literal_term_type(L, G, string).
 
 read_triples(_, [], _) --> !.
 
