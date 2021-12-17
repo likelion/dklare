@@ -153,7 +153,7 @@ read_lambda(Functor, Arity, IRI, Clause) :-
      Clause0 = '==='(Head, where(E,C))
   ; rdfs(IRI, d:once, Once)
   -> read_expression(Once, C),
-     Clause0 = '==='(Head,if(E,C))
+     Clause0 = '==='(Head,once(E,C))
   ; Clause0 = '==='(Head,E)
   ),
   varnumbers_names(Clause0, Clause, _).
@@ -329,7 +329,7 @@ ground_not_([not(H)|T], [not(H,G)|T2], Vars, C0, C) :- !,
 ground_not_([H|T], [H|T2], Vars, C0, C) :- !,
   H =.. [F,S|_],
   memberchk(F, [rdf,rdfs]),
-  ( memberchk(not_pattern(S), C0)
+  ( contains_var(not_pattern(S), C0)
   -> C1 = C0
   ; C1 = [not_pattern(S)|C0]
   ),
