@@ -8,15 +8,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the repo
-        uses: actions/checkout@v2
-   
       - name: Docker login
         uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           
+      - name: Check out the repo
+        uses: actions/checkout@v2
+
       - name: Build docker image
         run: |
           docker build . -t likelion/dklare:latest
