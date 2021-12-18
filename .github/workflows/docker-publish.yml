@@ -4,26 +4,19 @@ on:
   push:
     branches: [ master ]
 
-env:
-
-  REGISTRY: docker.io
-  IMAGE_NAME: ${{ github.repository }}
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v2
-    
+      - name: Check out the repo
+        uses: actions/checkout@v2
+   
       - name: Docker login
-        env:
-          DOCKER_USER : ${{ secrets.DOCKER_USER }}
-          DOCKER_PASSWORD: $ {{ secrets.DOCKER_PASSWORD }}
-        run: |
-          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
-    
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          
       - name: Build docker image
         run: |
           docker build . -t likelion/dklare:latest
