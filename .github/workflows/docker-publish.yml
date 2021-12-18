@@ -1,4 +1,4 @@
-name: Build and push to docker.io
+name: Build and push
 
 on:
   push:
