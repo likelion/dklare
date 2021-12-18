@@ -1,0 +1,35 @@
+name: Build and push to docker.io
+
+on:
+  push:
+    branches: [ master ]
+
+env:
+
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    
+      - name: Docker login
+        env:
+          DOCKER_USER : ${{ secrets.DOCKER_USER }}
+          DOCKER_PASSWORD: $ {{ secrets.DOCKER_PASSWORD }}
+        run: |
+          docker login -u $DOCKER_USER -p $DOCKER_PASSWORD
+    
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Build docker image
+        run: |
+          docker build . -t likelion/dklare:latest
+          
+      - name: Push to docker.io
+        run: |
+          docker push likelion/dklare:latest
