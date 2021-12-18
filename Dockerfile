@@ -12,6 +12,7 @@ ADD lib /opt/dklare/lib/
 ADD rdf /opt/dklare/rdf/
 
 COPY settings.db /opt/dklare/
+COPY dklare.ttl /opt/dklare/
 COPY run.pl /opt/dklare/
 
 WORKDIR /opt/dklare

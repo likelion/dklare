@@ -12,6 +12,7 @@ ADD lib /opt/server/cpack/dklare/lib/
 ADD rdf /opt/server/cpack/dklare/rdf/
 
 COPY *.db /opt/server/
+COPY dklare.ttl /opt/dklare/
 
 WORKDIR /opt
 
