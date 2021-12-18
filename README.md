@@ -1,3 +1,4 @@
+[![Build and push](https://github.com/likelion/dklare/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/likelion/dklare/actions/workflows/docker-publish.yml)
 # TL;DR
 
 ## Pull and run
