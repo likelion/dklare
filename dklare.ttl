@@ -49,12 +49,21 @@ d:graph
   a rdf:Property ;
   rdfs:domain d:Pattern .
 
+d:getter
+  a rdf:Property ;
+  rdfs:domain d:Getter .
+
 d:rdf
   a rdf:Property ;
   rdfs:domain d:Pattern ;
   rdfs:range d:Pattern .
 
 d:rdfs
+  a rdf:Property ;
+  rdfs:domain d:Pattern ;
+  rdfs:range d:Pattern .
+
+d:infer
   a rdf:Property ;
   rdfs:domain d:Pattern ;
   rdfs:range d:Pattern .

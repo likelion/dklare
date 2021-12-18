@@ -112,6 +112,7 @@ user:term_expansion(H === B, Clauses) :-
   ; Clauses = [H2:-B2|L]
   ).
 
+expand_partial_applications(_:_/0, []) :- !.
 expand_partial_applications(Mo:F/Ar0, PA) :-
   Ar is Ar0 - 1,
   length(A, Ar),

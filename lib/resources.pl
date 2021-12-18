@@ -22,6 +22,7 @@ limitations under the License.
 :- use_module(library(semweb/rdf11)).
 :- use_module(library(rdfs11)).
 :- use_module(library(literals)).
+:- use_module(library(utils)).
 
 :- rdf_meta resource(t),
             read_function(r, -, -, -),
@@ -32,7 +33,9 @@ limitations under the License.
             graph_triple(t),
             reset_graph(t, -),
             variable(r, -, r),
-            read_modifier(r, -, -).
+            read_modifier(r, -, -),
+            dont_infer(r, -),
+            fetch_class(-, r, -, -, -).
 
 resource(Triples) :-
   triplesort(Triples, SortedTriples),
@@ -51,9 +54,11 @@ check_type(rdf(S,P,O,G), rdf(S,P,O,G)) :-
   maplist(var_or_atom, G).
 check_type(rdfs(S,P,O), rdfs(S,P,O)) :-
   check_subject_predicate(S, P).
+check_type(not_pattern(X), not_pattern(X)).
 check_type(not(X,Y), not(X,Y)) :-
   check_type(X, X).
-check_type(not_pattern(X), not_pattern(X)).
+check_type(infer(S,P,O,T), infer(S,P,O,T)) :-
+  check_subject_predicate(S, P).
 check_type(optional(X), optional(X)) :-
   check_type(X, X).
 check_type(_-X, Y) :-
@@ -76,17 +81,22 @@ estimate(rdf(S,P,O,G), C-rdf(S,P,O,G)) :-
   rdf_estimate_complexity(S, P, O, C).
 estimate(rdfs(S,P,O), C-rdfs(S,P,O)) :-
   rdfs_estimate_complexity(S, P, O, C).
-estimate(not(X,Y), C-not(X,Y)) :-
-  ( ground(Y)
-  -> C = 1
-  ; C = n
-  ).
 estimate(not_pattern(X), C-not_pattern(X)) :-
   ( ground(X)
   -> C = 0
-  ; C = m
+  ; C = a
   ).
-estimate(optional(X), o-C-optional(X)) :-
+estimate(not(X,Y), C-not(X,Y)) :-
+  ( ground(Y)
+  -> C = 1
+  ; C = b
+  ).
+estimate(infer(S,P,O,T), C-infer(S,P,O,T)) :-
+  ( ground(T)
+  -> C = 1
+  ; C = c
+  ).
+estimate(optional(X), d-C-optional(X)) :-
   estimate(X, C-X).
 
 match([]) :- !.
@@ -97,22 +107,27 @@ match([_-Triple|T]) :-
   triplesort(T, SortedT),
   match(SortedT).
 
-match_triple(not(X,G), _) :-
-  ( ground(G)
-  -> true
-  ; instantiation_error(G)
-  ),
-  \+ match_triple(X, false).
-match_triple(not_pattern(S), _) :-
-  \+ rdfs(S, rdf:type, d:'Pattern').
-match_triple(optional(X), _) :-
-  match_triple(X, true).
 match_triple(rdf(S,P,O,G), Optional) :-
   match_triple(rdf(S,P,O), G, Optional).
 match_triple(rdf(S,P,OT), Optional) :-
   ( rdf(S,P,O) *-> object_to_term(O, OT) ; Optional ).
 match_triple(rdfs(S,P,OT), Optional) :-
   ( rdfs(S,P,O) *-> object_to_term(O, OT) ; Optional ).
+match_triple(not_pattern(S), _) :-
+  \+ rdfs(S, rdf:type, d:'Pattern').
+match_triple(not(X,G), _) :-
+  ( ground(G)
+  -> true
+  ; instantiation_error(G)
+  ),
+  \+ match_triple(X, false).
+match_triple(infer(S,P,OT,T), _Optional) :-
+  rdf(T, d:getter, Getter),
+  rdf(Getter, P, Function),
+  call(Function, S, O),
+  object_to_term(O, OT).
+match_triple(optional(X), _) :-
+  match_triple(X, true).
 
 match_triple(_, [], _) :- !.
 match_triple(rdf(S,P,OT), [H], Optional) :- !,
@@ -197,6 +212,7 @@ read_application(IRI, Application) :-
 
 read_args(rdf:nil, []) :- !.
 read_args(IRI, [H|T]) :-
+  atom(IRI),
   rdf(IRI, rdf:first, First),
   rdf(IRI, rdf:rest, Rest),
   !,
@@ -212,7 +228,7 @@ read_pattern(IRI, Pattern) :-
   )),
   phrase(read_pattern(IRI, _, _{type:rdf,not:false,optional:false}), Triples0),
   varnumbers_names(Triples0, Triples1, Vars),
-  ground_not(Triples1, Pattern),
+  post_process_pattern(Triples1, Pattern),
   varnumbers_vars(Vars).
 
 read_pattern(IRI, Id, Context0) -->
@@ -287,6 +303,9 @@ read_modifier(d:rdf, Context0, Context) :-
 read_modifier(d:rdfs, Context0, Context) :-
   put_dict(type, Context0, rdfs, Context).
 
+read_modifier(d:infer, Context0, Context) :-
+  put_dict(type, Context0, infer, Context).
+
 read_modifier(d:optional, Context0, Context) :-
   put_dict(optional, Context0, true, Context).
 
@@ -303,7 +322,10 @@ triple_term(S,P,O,Context,Term) :-
   ( get_dict(graphs, Context, Graphs),
     Type == rdf
   -> Term0 =.. [Type,S,P,O,Graphs]
-  ; Term0 =.. [Type,S,P,O]
+  ; \+ dont_infer(P, Type)
+  -> Term0 =.. [Type,S,P,O]
+  ; print_message(warning, invalid_pattern_triple(Type,S,P,O)),
+    fail
   ),
   ( get_dict(not, Context, true)
   -> Term1 = not(Term0)
@@ -314,28 +336,51 @@ triple_term(S,P,O,Context,Term) :-
   ; Term = Term1
   ).
 
-ground_not(Triples0, Triples) :-
+dont_infer(rdf:type, infer).
+dont_infer(rdfs:subPropertyOf, infer).
+dont_infer(rdfs:subClassOf, infer).
+dont_infer(rdfs:domain, infer).
+dont_infer(rdfs:range, infer).
+
+:- multifile prolog:message/3.
+
+prolog:message(invalid_pattern_triple(Type,S,P,O)) -->
+  [ 'Invalid pattern triple ~w~@'-[Type,utils:debug_args(t(S,P,O))] ].
+
+post_process_pattern(Triples0, Triples) :-
   term_variables(Triples0, Vs),
   term_singletons(Triples0, Ss),
   ord_subtract(Vs, Ss, Vars),
-  ground_not_(Triples0, Triples1, Vars, [], Checks),
+  phrase(post_process_pattern_(Triples0, Triples1, Vars, []), Checks),
   append(Triples1, Checks, Triples).
 
-ground_not_([], [], _, C, C) :- !.
-ground_not_([not(H)|T], [not(H,G)|T2], Vars, C0, C) :- !,
-  term_variables(H, Vs),
-  ord_intersection(Vs, Vars, G),
-  ground_not_(T, T2, Vars, C0, C).
-ground_not_([H|T], [H|T2], Vars, C0, C) :- !,
-  H =.. [F,S|_],
-  memberchk(F, [rdf,rdfs]),
-  ( contains_var(not_pattern(S), C0)
-  -> C1 = C0
-  ; C1 = [not_pattern(S)|C0]
-  ),
-  ground_not_(T, T2, Vars, C1, C).
-ground_not_([H|T], [H|T2], Vars, C0, C) :- !,
-  ground_not_(T, T2, Vars, C0, C).
+post_process_pattern_([], [], _, _) --> [].
+post_process_pattern_([not(H)|T], [not(H,G)|T2], Vars, NPs) --> !,
+  { term_variables(H, Vs),
+    ord_intersection(Vs, Vars, G)
+  },
+  post_process_pattern_(T, T2, Vars, NPs).
+post_process_pattern_([infer(S,P,O)|T], [infer(S,P,O,C)|T2], Vars, NPs0) --> !,
+  not_pattern(S, NPs0, NPs),
+  fetch_class(S, rdf:type, C),
+  post_process_pattern_(T, T2, Vars, NPs).
+post_process_pattern_([H|T], [H|T2], Vars, NPs0) -->
+  { H =.. [F,S|_],
+    memberchk(F, [rdf,rdfs])
+  }, !,
+  not_pattern(S, NPs0, NPs),
+  post_process_pattern_(T, T2, Vars, NPs).
+post_process_pattern_([H|T], [H|T2], Vars, NPs) --> !,
+  post_process_pattern_(T, T2, Vars, NPs).
+
+not_pattern(S, NPs0, NPs) -->
+  ( { contains_var(S, NPs0) }
+  -> [not_pattern(S)],
+     NPs = [S|NPs0]
+  ; { NPs = NPs0 }
+  ).
+
+fetch_class(S, T, C) --> [rdfs(S, T, C)].
 
 varnumbers_vars([]) :- !.
 varnumbers_vars([Var=V|T]) :-
