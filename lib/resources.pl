@@ -33,7 +33,6 @@ limitations under the License.
             graph_triple(t),
             reset_graph(t, -),
             extract_graph(t, -),
-            var_or_iri(r, -, r),
             read_modifier(r, -, -),
             dont_infer(r, -),
             fetch_class(-, r, -, -, -).
@@ -200,7 +199,7 @@ read_expression(Object, Expression) :-
   rdfs(Object, rdf:type, d:'Pattern'), !,
   read_pattern(Object, Expression).
 read_expression(Object, Expression) :-
-  var_or_iri(Object, Expression, v:'').
+  var_or_iri(Object, Expression).
 
 read_bnode(Object, Expression) :-
   read_expression_list(Object, [FunctorS|Arguments]), !,
@@ -216,14 +215,15 @@ read_bnode(Object, Expression) :-
 read_bnode(Object, Expression) :-
   read_pattern(Object, Expression).
 
-var_or_iri(IRI, '$VAR'(V), Prefix) :-
+var_or_iri(IRI, '$VAR'(V)) :-
   atom(IRI),
+  rdf_equal(v:'', Prefix),
   atom_concat(Prefix, V0, IRI), !,
   ( V0 == '_'
   -> gensym('$ANON_', V)
   ; V = V0
   ).
-var_or_iri(O, O, _).
+var_or_iri(O, O).
 
 read_pattern(IRI, Pattern) :-
   Context = _{type:rdf,not:false,optional:false},
@@ -256,7 +256,7 @@ reset_graph(R, Gs) :-
 
 extract_graph(_-L, G) :-
   atom(L), !,
-  var_or_iri(L, G, v:'').
+  var_or_iri(L, G).
 extract_graph(_-'^^'(S, xsd:string), G) :-
   atom_string(G, S).
 extract_graph(_-'@'(S, _), G) :-
@@ -268,7 +268,7 @@ read_triples(Id, [P-O|T], Context) -->
   { rdf_equal(d:id, P), !,
     atom(O),
     \+ rdf_is_bnode(O),
-    var_or_iri(O, Id, v:'')
+    var_or_iri(O, Id)
   },
   read_triples(Id, T, Context).
 
@@ -285,7 +285,7 @@ read_triples(Id, [P-O|T], Context0) -->
 
 read_triples(Id, [P-O|T], Context) -->
   { rdf_is_bnode(O), !,
-    var_or_iri(P, PV, v:''),
+    var_or_iri(P, PV),
     triple_term(Id, PV, OV, Context, Term)
   },
   [Term],
@@ -293,8 +293,8 @@ read_triples(Id, [P-O|T], Context) -->
   read_triples(Id, T, Context).
 
 read_triples(Id, [P-O|T], Context) -->
-  { var_or_iri(P, PV, v:''),
-    var_or_iri(O, OV, v:''),
+  { var_or_iri(P, PV),
+    var_or_iri(O, OV),
     triple_term(Id, PV, OV, Context, Term)
   },
   [Term],
