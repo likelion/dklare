@@ -27,6 +27,8 @@ literal_term_type(^^(S, xsd:string), A, string) :- !,
   to_atom(S, A).
 literal_term_type(@(S, _), A, string) :- !,
   to_atom(S, A).
+literal_term_type(^^(B, xsd:boolean), A, boolean) :- !,
+  to_atom(B, A).
 literal_term_type(^^(N, _), N, number) :-
   number(N).
 

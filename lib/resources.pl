@@ -16,6 +16,7 @@ limitations under the License.
 
 :- module(resources, [resource/1,
                       read_function/4,
+                      read_expression_list/2,
                       read_expression/2,
                       read_pattern/2]).
 
@@ -26,9 +27,8 @@ limitations under the License.
 
 :- rdf_meta resource(t),
             read_function(r, -, -, -),
-            read_expression(r, -),
-            read_application(r, -),
-            read_args(r, -),
+            read_expression_list(o, -),
+            read_expression(o, -),
             read_pattern(r, -),
             graph_triple(t),
             reset_graph(t, -),
@@ -153,9 +153,13 @@ read_function(IRI, Functor, Arity, Clauses) :-
 
 read_lambda(Functor, Arity, IRI, Clause) :-
   ( rdfs(IRI, d:given, Args)
-  -> read_args(Args, A),
-     Head =.. [Functor|A],
-     length(A, Arity)
+  -> ( read_expression_list(Args, A)
+     -> Head =.. [Functor|A],
+        length(A, Arity)
+     ; read_expression(Args, A)
+     -> Head =.. [Functor,A],
+        Arity = 1
+     )
   ; Head = Functor,
     Arity = 0
   ),
@@ -173,22 +177,38 @@ read_lambda(Functor, Arity, IRI, Clause) :-
   ),
   varnumbers_names(Clause0, Clause, _).
 
-read_expression(IRI, Expression) :-
-  ( atom(IRI)
-  -> ( variable(IRI, '$VAR'(V), v:'')
-     -> Expression = '$VAR'(V)
-     ; read_application(IRI, Expression)
-     -> true
-     ; read_pattern(IRI, Expression)
-     -> true
-     ; Expression = IRI
-     )
-  ; literal_term_type(IRI, Term, _),
-    ( Term == '[]'
-    -> Expression = []
-    ; Expression = Term
-    )
+read_expression_list(rdf:nil, []) :- !.
+read_expression_list(Object, [H|T]) :-
+  atom(Object),
+  rdf(Object, rdf:first, First),
+  rdf(Object, rdf:rest, Rest), !,
+  read_expression(First, H),
+  read_expression_list(Rest, T).
+
+read_expression(Object, Expression) :-
+  literal_term_type(Object, Term, _), !,
+  ( Term == '[]'
+  -> Expression = []
+  ; Expression = Term
   ).
+read_expression(Object, Expression) :-
+  rdf_is_bnode(Object), !,
+  read_bnode(Object, Expression).
+read_expression(Object, Expression) :-
+  rdfs(Object, rdf:type, d:'Pattern'), !,
+  read_pattern(Object, Expression).
+read_expression(Object, Expression) :-
+  variable(Object, Expression, v:'').
+
+read_bnode(Object, Expression) :-
+  read_expression_list(Object, [Functor|Arguments]), !,
+  ( Arguments \== [],
+    compound(Functor)
+  -> Expression =.. ['@',Functor|Arguments]
+  ; Expression =.. [Functor|Arguments]
+  ).
+read_bnode(Object, Expression) :-
+  read_pattern(Object, Expression).
 
 variable(IRI, '$VAR'(V), Prefix) :-
   atom(IRI),
@@ -199,34 +219,9 @@ variable(IRI, '$VAR'(V), Prefix) :-
   ).
 variable(O, O, _).
 
-read_application(rdf:nil, []) :- !.
-read_application(IRI, Application) :-
-  rdf(IRI, rdf:first, First),
-  rdf(IRI, rdf:rest, Rest),
-  read_expression(First, Expression),
-  read_args(Rest, Args),
-  ( compound(Expression)
-  -> Application =.. ['@',Expression|Args]
-  ; Application =.. [Expression|Args]
-  ).
-
-read_args(rdf:nil, []) :- !.
-read_args(IRI, [H|T]) :-
-  atom(IRI),
-  rdf(IRI, rdf:first, First),
-  rdf(IRI, rdf:rest, Rest),
-  !,
-  read_expression(First, H),
-  read_args(Rest, T).
-read_args(IRI, [E]) :-
-  read_expression(IRI, E).
-
 read_pattern(IRI, Pattern) :-
-  once((
-    rdf_is_bnode(IRI)
-  ; rdfs(IRI, rdf:type, d:'Pattern')
-  )),
-  phrase(read_pattern(IRI, _, _{type:rdf,not:false,optional:false}), Triples0),
+  Context = _{type:rdf,not:false,optional:false},
+  phrase(read_pattern(IRI, _, Context), Triples0),
   varnumbers_names(Triples0, Triples1, Vars),
   post_process_pattern(Triples1, Pattern),
   varnumbers_vars(Vars).
