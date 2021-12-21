@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-:- module(resources, [resource/1,
+:- module(resources, [match/1,
                       read_function/4,
                       read_expression_list/2,
                       read_expression/2,
@@ -25,21 +25,18 @@ limitations under the License.
 :- use_module(library(literals)).
 :- use_module(library(utils)).
 
-:- rdf_meta resource(t),
+:- rdf_meta match(t),
             read_function(r, -, -, -),
             read_expression_list(o, -),
             read_expression(o, -),
             read_pattern(r, -),
             graph_triple(t),
             reset_graph(t, -),
-            variable(r, -, r),
+            extract_graph(t, -),
+            var_or_iri(r, -, r),
             read_modifier(r, -, -),
             dont_infer(r, -),
             fetch_class(-, r, -, -, -).
-
-resource(Triples) :-
-  triplesort(Triples, SortedTriples),
-  match(SortedTriples).
 
 triplesort([], []) :- !.
 triplesort(Triples, SortedTriples) :-
@@ -99,16 +96,21 @@ estimate(infer(S,P,O,T), C-infer(S,P,O,T)) :-
 estimate(optional(X), d-C-optional(X)) :-
   estimate(X, C-X).
 
-match([]) :- !.
-match([_-Triple]) :- !,
+match(Triples) :-
+  is_list(Triples),
+  triplesort(Triples, SortedTriples),
+  match_(SortedTriples).
+
+match_([]) :- !.
+match_([_-Triple]) :- !,
   match_triple(Triple, false).
-match([_-Triple|T]) :-
+match_([_-Triple|T]) :-
   match_triple(Triple, false),
   triplesort(T, SortedT),
-  match(SortedT).
+  match_(SortedT).
 
 match_triple(rdf(S,P,O,G), Optional) :-
-  match_triple(rdf(S,P,O), G, Optional).
+  match_triple_graphs(rdf(S,P,O), G, Optional).
 match_triple(rdf(S,P,OT), Optional) :-
   ( rdf(S,P,O) *-> object_to_term(O, OT) ; Optional ).
 match_triple(rdfs(S,P,OT), Optional) :-
@@ -129,17 +131,17 @@ match_triple(infer(S,P,OT,T), _Optional) :-
 match_triple(optional(X), _) :-
   match_triple(X, true).
 
-match_triple(_, [], _) :- !.
-match_triple(rdf(S,P,OT), [H], Optional) :- !,
+match_triple_graphs(_, [], _) :- !.
+match_triple_graphs(rdf(S,P,OT), [H], Optional) :- !,
   ( rdf(S,P,O,H) *-> object_to_term(O, OT) ; Optional ).
-match_triple(rdf(S,P,OT), [H|T], Optional) :-
+match_triple_graphs(rdf(S,P,OT), [H|T], Optional) :-
   ( rdf(S,P,O,H) *-> object_to_term(O, OT) ; Optional ),
-  match_triple(rdf(S,P,O), T, Optional).
+  match_triple_graphs(rdf(S,P,O), T, Optional).
 
 read_function(IRI, Functor, Arity, Clauses) :-
-  resource([rdfs(IRI,rdf:type,d:'Function'),
-            rdfs(IRI,d:define,Lambda),
-            optional(rdfs(IRI,d:functor,FS))]),
+  match([rdfs(IRI,rdf:type,d:'Function'),
+         rdfs(IRI,d:define,Lambda),
+         optional(rdfs(IRI,d:functor,FS))]),
   ( var(FS)
   -> Functor = IRI
   ; atom_string(Functor, FS)
@@ -186,8 +188,8 @@ read_expression_list(Object, [H|T]) :-
   read_expression_list(Rest, T).
 
 read_expression(Object, Expression) :-
-  literal_term_type(Object, Term, _), !,
-  ( Term == '[]'
+  literal_to_term(Object, Term), !,
+  ( Term == "[]"
   -> Expression = []
   ; Expression = Term
   ).
@@ -198,10 +200,14 @@ read_expression(Object, Expression) :-
   rdfs(Object, rdf:type, d:'Pattern'), !,
   read_pattern(Object, Expression).
 read_expression(Object, Expression) :-
-  variable(Object, Expression, v:'').
+  var_or_iri(Object, Expression, v:'').
 
 read_bnode(Object, Expression) :-
-  read_expression_list(Object, [Functor|Arguments]), !,
+  read_expression_list(Object, [FunctorS|Arguments]), !,
+  ( string(FunctorS)
+  -> atom_string(Functor, FunctorS)
+  ; Functor = FunctorS
+  ),
   ( Arguments \== [],
     compound(Functor)
   -> Expression =.. ['@',Functor|Arguments]
@@ -210,14 +216,14 @@ read_bnode(Object, Expression) :-
 read_bnode(Object, Expression) :-
   read_pattern(Object, Expression).
 
-variable(IRI, '$VAR'(V), Prefix) :-
+var_or_iri(IRI, '$VAR'(V), Prefix) :-
   atom(IRI),
   atom_concat(Prefix, V0, IRI), !,
   ( V0 == '_'
   -> gensym('$ANON_', V)
   ; V = V0
   ).
-variable(O, O, _).
+var_or_iri(O, O, _).
 
 read_pattern(IRI, Pattern) :-
   Context = _{type:rdf,not:false,optional:false},
@@ -250,9 +256,11 @@ reset_graph(R, Gs) :-
 
 extract_graph(_-L, G) :-
   atom(L), !,
-  variable(L, G, v:'').
-extract_graph(_-L, G) :-
-  literal_term_type(L, G, string).
+  var_or_iri(L, G, v:'').
+extract_graph(_-'^^'(S, xsd:string), G) :-
+  atom_string(G, S).
+extract_graph(_-'@'(S, _), G) :-
+  atom_string(G, S).
 
 read_triples(_, [], _) --> !.
 
@@ -260,7 +268,7 @@ read_triples(Id, [P-O|T], Context) -->
   { rdf_equal(d:id, P), !,
     atom(O),
     \+ rdf_is_bnode(O),
-    variable(O, Id, v:'')
+    var_or_iri(O, Id, v:'')
   },
   read_triples(Id, T, Context).
 
@@ -277,7 +285,7 @@ read_triples(Id, [P-O|T], Context0) -->
 
 read_triples(Id, [P-O|T], Context) -->
   { rdf_is_bnode(O), !,
-    variable(P, PV, v:''),
+    var_or_iri(P, PV, v:''),
     triple_term(Id, PV, OV, Context, Term)
   },
   [Term],
@@ -285,8 +293,8 @@ read_triples(Id, [P-O|T], Context) -->
   read_triples(Id, T, Context).
 
 read_triples(Id, [P-O|T], Context) -->
-  { variable(P, PV, v:''),
-    variable(O, OV, v:''),
+  { var_or_iri(P, PV, v:''),
+    var_or_iri(O, OV, v:''),
     triple_term(Id, PV, OV, Context, Term)
   },
   [Term],
@@ -370,9 +378,9 @@ post_process_pattern_([H|T], [H|T2], Vars, NPs) --> !,
 
 not_pattern(S, NPs0, NPs) -->
   ( { contains_var(S, NPs0) }
-  -> [not_pattern(S)],
-     NPs = [S|NPs0]
-  ; { NPs = NPs0 }
+  -> { NPs = NPs0 }
+  ; [not_pattern(S)],
+    { NPs = [S|NPs0] }
   ).
 
 fetch_class(S, T, C) --> [rdfs(S, T, C)].
