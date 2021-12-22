@@ -115,6 +115,10 @@ match_triple(rdf(S,P,OT), Optional) :-
 match_triple(rdfs(S,P,OT), Optional) :-
   ( rdfs(S,P,O) *-> object_to_term(O, OT) ; Optional ).
 match_triple(not_pattern(S), _) :-
+  ( ground(S)
+  -> true
+  ; instantiation_error(S)
+  ),
   \+ rdfs(S, rdf:type, d:'Pattern').
 match_triple(not(X,G), _) :-
   ( ground(G)
@@ -122,11 +126,14 @@ match_triple(not(X,G), _) :-
   ; instantiation_error(G)
   ),
   \+ match_triple(X, false).
-match_triple(infer(S,P,OT,T), _Optional) :-
+match_triple(infer(S,P,OT,T), Optional) :-
+  ( ground(T)
+  -> true
+  ; instantiation_error(T)
+  ),
   rdf(T, d:getter, Getter),
   rdf(Getter, P, Function),
-  call(Function, S, O),
-  object_to_term(O, OT).
+  ( call(Function, S, O) *-> object_to_term(O, OT) ; Optional ).
 match_triple(optional(X), _) :-
   match_triple(X, true).
 
