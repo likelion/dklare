@@ -32,7 +32,7 @@ limitations under the License.
             read_pattern(r, -),
             graph_triple(t),
             reset_graph(t, -),
-            read_modifier(r, -, -),
+            modifier(r, -),
             dont_infer(r, -).
 
 triplesort([], []) :- !.
@@ -226,23 +226,43 @@ read_bnode(Object, Expression) :-
 read_bnode(Object, Expression) :-
   read_pattern(Object, Expression).
 
-var_or_iri(IRI, '$VAR'(V)) :-
+var_or_iri(IRI, V) :-
+  variable(IRI, V), !.
+var_or_iri(IRI, IRI).
+
+variable(IRI, V) :-
   atom(IRI),
   rdf_equal(v:'', Prefix),
-  atom_concat(Prefix, V0, IRI), !,
+  atom_concat(Prefix, V0, IRI),
   ( V0 == '_'
-  -> gensym('$ANON_', V)
-  ; V = V0
+  -> true
+  ; V = '$VAR'(V0)
   ).
-var_or_iri(O, O).
+
+var_or_object(IRI, V), [Context] --> [Context0],
+  { ( variable(IRI, V)
+    -> ( var(V)
+       -> gensym('$ANON_', V1),
+          V = '$VAR'(V1),
+          Context = Context0
+       ; get_dict(vars, Context0, Vars0),
+         union([V], Vars0, Vars),
+         put_dict(vars, Context0, Vars, Context)
+       )
+    ; V = IRI,
+      Context = Context0
+    )
+  }.
 
 read_pattern(IRI, Pattern) :-
-  read_pattern_(IRI, _, _{type:rdf,optional:false}, Pattern, _).
+  phrase(
+    read_pattern(IRI, _, [], Pattern),
+    [_{type:rdf,vars:[]}],
+    _
+  ).
 
-read_pattern_(IRI, Id, Context, Pattern, []) :-
-  phrase(read_pattern(IRI, Id, Context), Pattern).
-
-read_pattern(IRI, Id, Context0) -->
+read_pattern(IRI, Id, Pattern0, Pattern) -->
+  lookup(Context0),
   { findall(P-O, rdf(IRI, P, O), POs0),
     partition(graph_triple, POs0, GTs, POs),
     ( GTs == []
@@ -257,7 +277,8 @@ read_pattern(IRI, Id, Context0) -->
       )
     )
   },
-  read_triples(Id, POs, Context).
+  set_context(Context),
+  read_triples(Id, POs, Pattern0, Pattern).
 
 graph_triple('-'(d:graph,_)).
 
@@ -272,81 +293,116 @@ extract_graph(_-O, G) :-
     atom_string(G, T)
   ).
 
-read_triples(_, [], _) --> !.
+attr_unify_hook(_, _).
 
-read_triples(Id, [P-O|T], Context) -->
+read_triples(_, [], Pattern, Pattern) --> !.
+
+read_triples(Id, [P-O|T], Pattern0, Pattern) -->
   { rdf_equal(d:id, P), !,
     atom(O),
-    \+ rdf_is_bnode(O),
-    var_or_iri(O, Id)
+    \+ rdf_is_bnode(O)
   },
-  read_triples(Id, T, Context).
+  var_or_object(O, Id),
+  read_triples(Id, T, Pattern0, Pattern).
 
-read_triples(Id, [P-O|T], Context0) -->
-  { read_modifier(P, Context0, Context) },
-  !,
-  read_pattern(O, Id0, Context),
+read_triples(Id, [P-O|T], Pattern0, Pattern) -->
+  { modifier(P, Modifier) }, !,
+  lookup(Context),
+  set_context(Context.put(Modifier)),
+  { put_attr(Id0, resources, Id) },
+  read_pattern(O, Id0, Pattern0, Pattern1),
+  { del_attr(Id0, resources) },
+  set_context(Context),
   { ( var(Id0)
     -> Id = Id0
     ; true
     )
   },
-  read_triples(Id, T, Context0).
+  read_triples(Id, T, Pattern1, Pattern).
 
-read_triples(Id, [P-O|T], Context) -->
-  { rdf_equal(d:not, P), !,
-    read_pattern_(O, Id0, Context, Pattern, Vars),
+read_triples(Id, [P-O|T], Pattern0, [not(Not,Ground)|Pattern]) -->
+  { rdf_equal(d:not, P) }, !,
+  read_triples(Id, T, Pattern0, Pattern),
+  lookup(Context1),
+  set_context(Context1.put(vars, [])),
+  read_pattern(O, Id0, [], Not),
+  lookup(Context2),
+  { get_dict(vars, Context1, Vars10),
+    get_dict(vars, Context2, Vars20),
     ( var(Id0)
-    -> Id = Id0
-    ; true
+    -> Id = Id0,
+       Vars2 = [Id|Vars20],
+       ( var(Id)
+       -> Vars1 = [Id|Vars10]
+       ; Vars1 = Vars10
+       )
+    ; Vars2 = Vars20,
+      Vars1 = Vars10
+    ),
+    intersection(Vars1, Vars2, Ground),
+    union(Vars2, Vars1, Vars)
+  },
+  set_context(Context1.put(vars, Vars)).
+
+read_triples(Id, [P-O|T], Pattern0, Pattern) -->
+  { rdf_is_bnode(O) }, !,
+  var_or_object(P, PV),
+  triple_term(Id, PV, OV, Term),
+  read_pattern(O, OV, [Term|Pattern0], Pattern1),
+  read_triples(Id, T, Pattern1, Pattern).
+
+read_triples(Id, [P-O|T], Pattern0, [Term|Pattern2]) -->
+  var_or_object(P, PV),
+  var_or_object(O, OV),
+  triple_term(Id, PV, OV, Term),
+  read_triples(Id, T, Pattern0, Pattern1),
+  { ( get_attr(Id, resources, Id0)
+    -> ( \+ contains_var(not_pattern(Id0), [Pattern1])
+       -> Pattern2 = [not_pattern(Id0)|Pattern1]
+       ; Pattern2 = Pattern1
+       )
+    ; ( \+ contains_var(not_pattern(Id), [Pattern1])
+      -> Pattern2 = [not_pattern(Id)|Pattern1]
+      ; Pattern2 = Pattern1
+      )
     )
-  },
-  [not(Pattern,Vars)],
-  read_triples(Id, T, Context).
+  }.
 
-read_triples(Id, [P-O|T], Context) -->
-  { rdf_is_bnode(O), !,
-    var_or_iri(P, PV),
-    triple_term(Id, PV, OV, Context, Term)
-  },
-  [Term],
-  read_pattern(O, OV, Context),
-  read_triples(Id, T, Context).
+intersection([], _, []) :- !.
+intersection([H|T], A, [H|T2]) :-
+  contains_var(H, A), !,
+  intersection(T, A, T2).
+intersection([_|T], A, T2) :-
+  intersection(T, A, T2).
 
-read_triples(Id, [P-O|T], Context) -->
-  { var_or_iri(P, PV),
-    var_or_iri(O, OV),
-    triple_term(Id, PV, OV, Context, Term)
-  },
-  [Term],
-  read_triples(Id, T, Context).
+union([], A, A) :- !.
+union([H|T], A, B) :-
+  contains_var(H, A), !,
+  union(T, A, B).
+union([H|T], A, [H|B]) :-
+  union(T, A, B).
 
-read_modifier(d:rdf, Context0, Context) :-
-  put_dict(type, Context0, rdf, Context).
+modifier(d:rdf, _{type:rdf}).
+modifier(d:rdfs, _{type:rdfs}).
+modifier(d:infer, _{type:infer}).
+modifier(d:optional, _{optional:true}).
 
-read_modifier(d:rdfs, Context0, Context) :-
-  put_dict(type, Context0, rdfs, Context).
-
-read_modifier(d:infer, Context0, Context) :-
-  put_dict(type, Context0, infer, Context).
-
-read_modifier(d:optional, Context0, Context) :-
-  put_dict(optional, Context0, true, Context).
-
-triple_term(S,P,O,Context,Term) :-
-  get_dict(type, Context, Type),
-  ( get_dict(graphs, Context, Graphs),
-    Type == rdf
-  -> Term0 =.. [Type,S,P,O,Graphs]
-  ; \+ dont_infer(P, Type)
-  -> Term0 =.. [Type,S,P,O]
-  ; print_message(warning, invalid_pattern_triple(Type,S,P,O)),
-    fail
-  ),
-  ( get_dict(optional, Context, true)
-  -> Term = optional(Term0)
-  ; Term = Term0
-  ).
+triple_term(S,P,O,Term) -->
+  lookup(Context),
+  { get_dict(type, Context, Type),
+    ( get_dict(graphs, Context, Graphs),
+      Type == rdf
+    -> Term0 =.. [Type,S,P,O,Graphs]
+    ; \+ dont_infer(P, Type)
+    -> Term0 =.. [Type,S,P,O]
+    ; print_message(warning, invalid_pattern_triple(Type,S,P,O)),
+      fail
+    ),
+    ( get_dict(optional, Context, true)
+      -> Term = optional(Term0)
+    ; Term = Term0
+    )
+  }.
 
 dont_infer(rdf:type, infer).
 dont_infer(rdfs:subPropertyOf, infer).

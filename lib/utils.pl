@@ -21,7 +21,9 @@ limitations under the License.
                    sync_message/2,
                    sync_message/3,
                    handle_messages/0,
-                   ensure_slash/2
+                   ensure_slash/2,
+                   lookup//1,
+                   set_context//1
                  ]).
 
 :- use_module(library(semweb/rdf11)).
@@ -137,3 +139,7 @@ ensure_slash(Dir0, Dir) :-
   -> Dir = Dir0
   ; atom_concat(Dir0, /, Dir)
   ).
+
+lookup(Context), [Context] --> [Context].
+
+set_context(Context), [Context] --> [_].
