@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 :- module(rdfs11, [ rdfs/3,
+                    rdfschk/3,
                     rdfs_only/3,
                     rdfs_estimate_complexity/4
                   ]).
@@ -31,6 +32,7 @@ limitations under the License.
 :- rdf_meta class(r),
             property(r),
             rdfs(r,r,o),
+            rdfschk(r,r,o),
             rdfs_only(r,r,o),
             rdfi(r,r,o),
             rdfq(r,r,o),
@@ -123,6 +125,12 @@ rdfs(S, P, O) :-
      )
   ; rdfs_only(S, P, O)
   ).
+
+rdfschk(S, P, O) :-
+  once((
+    rdf(S, P, O)
+  ; sync_message(rdfs, rdfs11:rdfs_(S, P, O))
+  )).
 
 % TODO: do inferencing of rdfs:Resource, rdf:Property on the fly here
 

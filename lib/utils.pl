@@ -98,11 +98,12 @@ sync_message(Thread, Goal, Result) :-
 
 sync_message_(Thread, Quantifier, Goal, Result) :-
   gensym('__queue', Alias),
-  call_cleanup(
-    ( message_queue_create(Queue, [alias(Alias)]),
-      Message =.. [Quantifier,Goal,Queue],
+  setup_call_cleanup(
+    message_queue_create(Queue, [alias(Alias)]),
+    ( Message =.. [Quantifier,Goal,Queue],
       thread_send_message(Thread, Message),
-      thread_get_message(Queue, Result)
+      thread_get_message(Queue, Result0),
+      Result0 = ok(Result)
     ),
     message_queue_destroy(Queue)
   ).
@@ -122,14 +123,21 @@ handle_messages :-
   ).
 
 handle_message(one(Goal, Queue)) :- !,
-  call_cleanup(
+  setup_call_catcher_cleanup(
+    true,
     once(Goal),
-    thread_send_message(Queue, Goal)
+    Catcher,
+    ( ( Catcher == exit
+      ; Catcher == !
+      )
+    -> thread_send_message(Queue, ok(Goal))
+    ; thread_send_message(Queue, fail)
+    )
   ).
 handle_message(all(Goal, Queue)) :- !,
   call_cleanup(
     findall(Goal, Goal, Result),
-    thread_send_message(Queue, Result)
+    thread_send_message(Queue, ok(Result))
   ).
 handle_message(Goal) :-
   once(Goal).

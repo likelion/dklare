@@ -122,7 +122,7 @@ match_triple(not_pattern(S), _) :-
   -> true
   ; instantiation_error(S)
   ),
-  \+ rdfs(S, rdf:type, d:'Pattern').
+  \+ rdfschk(S, rdf:type, d:'Pattern').
 match_triple(not(X,G), _) :-
   ( ground(G)
   -> true
@@ -164,7 +164,7 @@ read_function(IRI, Functor, Arity, Clauses) :-
   ).
 
 read_lambda(Functor, Arity, IRI, Clause) :-
-  ( rdfs(IRI, d:given, Args)
+  ( rdfschk(IRI, d:given, Args)
   -> ( read_expression_list(Args, A)
      -> Head =.. [Functor|A],
         length(A, Arity)
@@ -175,14 +175,14 @@ read_lambda(Functor, Arity, IRI, Clause) :-
   ; Head = Functor,
     Arity = 0
   ),
-  ( rdfs(IRI, d:return, Exp)
+  ( rdfschk(IRI, d:return, Exp)
   -> read_expression(Exp, E)
   ; E = true
   ),
-  ( rdfs(IRI, d:where, Where)
+  ( rdfschk(IRI, d:where, Where)
   -> read_expression(Where, C),
      Clause0 = '==='(Head, where(E,C))
-  ; rdfs(IRI, d:once, Once)
+  ; rdfschk(IRI, d:once, Once)
   -> read_expression(Once, C),
      Clause0 = '==='(Head,once(E,C))
   ; Clause0 = '==='(Head,E)
@@ -207,7 +207,7 @@ read_expression(Object, Expression) :-
   rdf_is_bnode(Object), !,
   read_bnode(Object, Expression).
 read_expression(Object, Expression) :-
-  rdfs(Object, rdf:type, d:'Pattern'), !,
+  rdfschk(Object, rdf:type, d:'Pattern'),
   read_pattern(Object, Expression).
 read_expression(Object, Expression) :-
   var_or_iri(Object, Expression).
