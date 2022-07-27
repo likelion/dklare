@@ -51,7 +51,7 @@ d:graph
 
 d:getter
   a rdf:Property ;
-  rdfs:domain d:Getter .
+  rdfs:domain d:Handler .
 
 d:rdf
   a rdf:Property ;

@@ -50,3 +50,16 @@ zip(_,[]) === [].
 zip([X|Xs],[Y|Ys]) === [(X,Y)|zip(Xs,Ys)].
 
 
+%cl(C) === CC where cls(C,CC).
+
+%from(N,_) === [N|f(_,from(N+1))].
+% from(N) === [N|from(N+1)].
+%
+% take(0,   _) === [].
+% take(_,[]) === [].
+% take(N,[X|Xs]) === [X|f(_,take(N-1,Xs@dummy))].
+%
+% firstNats(M) === take(M,from(1)).
+
+% firstNats(6,L1),
+% nf(L1,L).
