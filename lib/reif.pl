@@ -209,6 +209,5 @@ unify_with_occurs_check(X, Y, Cond) :-
   (  var(Cond)
   -> ( unify_with_occurs_check(X, Y) -> Cond = true ; Cond = false )
   ;  ground(Cond)
-  -> ( Cond = true -> unify_with_occurs_check(X, Y) ; Cond = false -> \+unify_with_occurs_check(X, Y))
+  -> ( Cond = true -> unify_with_occurs_check(X, Y) ; Cond = false -> dif(X, Y) )
   ).
-
