@@ -2,56 +2,69 @@
 
 :- op(500, yfx, $).
 
-type(var(X),     T1, C) :-
-  format('~@look {~w : ~w}       in ~w~n', [indent,X,T1,C]),
-  ( look(X:T, C), instantiate(T, T1)
-  *-> format('~@     {~w : ~w} found in ~w~n', [indent,X,T1,C])
-  ; format('~@~w not found~n', [indent,X]),
-    fail
-  ).
+kind(var(Z), K, KC) :- look(Z:K0, KC), instantiate(K0, K).
+kind(F$G,    K, KC) :- kind(F, K0->K, KC), kind(G, K0, KC).
+kind(A->B,   o, KC) :- kind(A, o, KC), kind(B, o, KC).
+kind(T,      o, _)  :- T \= var(_), T \= '$'(_,_), T \= '->'(_,_).
 
-type(lam(X,E), A->B, C) :-
-  format('~@?-- lam(~w, ~w) : ~w~n', [indent,X,E,A->B]),
-  add_indent,
-  ( type(E, B, [X:mono(A)|C])
-  *-> del_indent,
-     format('~@--> lam(~w, ~w) : ~w~n', [indent,X,E,A->B])
-  ; del_indent,
-    format('~@###~n', [indent]),
-    fail
-  ).
+look((X:Y), Xs) :- memberchk((X:Y0), Xs), unify_with_occurs_check(Y0, Y).
 
-type(X $ Y,       B, C) :-
-  format('~@?-- ~w $ ~w : ~w~n', [indent,X,Y,B]),
-  add_indent,
-  ( type(X, A->B, C), type(Y, A, C)
-  *-> del_indent,
-     format('~@--> ~w $ ~w : ~w~n', [indent,X,Y,B])
-  ; del_indent,
-    format('~@###~n', [indent]),
-    fail
-  ).
-
-type(let(X=E0,E1), T, C) :-
-     format('~@?-- let(~w : ~w, ~w : ~w)~n', [indent,E0,A,E1,T]),
-  add_indent,
-  ( type(E0, A, [X:mono(A)|C]), type(E1, T, [X:poly(A,C)|C])
-  *-> del_indent,
-     format('~@--> let(~w : ~w, ~w : ~w)~n', [indent,E0,A,E1,T])
-  ; del_indent,
-    format('~@###~n', [indent]),
-    fail
-  ).
-
-instantiate(mono(T), T) :- !.
-instantiate(poly(T,C), T1) :- copy_term(t(C,T), t(C,T1)).
-
-look(V, [V1|Xs]) :-
+look2(V, [V1|Xs]) :-
   if_(
     unify_with_occurs_check(V, V1),
     true,
     look(V, Xs)
   ).
+
+instantiate(mono(T), T) :- !.
+instantiate(poly(T0,C), T) :- copy_term(t(C,T0), t(C,T)).
+
+type(var(X), T, C, KC) -->
+  { format('~@look {~w : ~w}~n~@CO=~w~n~@KC=~w~n', [indent,X,T,indent,C,indent,KC]) },
+  ( { look(X:T0, C) } ,
+      inst_type(T0, T, KC)
+  *-> { format('~@foun {~w : ~w}~n', [indent,X,T]) }
+  ; { format('~@~w not found~n', [indent,X]), fail }
+  ).
+
+type(lam(X,E), A->B, C, KC) -->
+  { format('~@?-- lam(~w, ~w) : ~w~n~@CO=~w~n~@KC=~w~n', [indent,X,E,A->B,indent,C,indent,KC]), add_indent },
+  ( type(E, B, [X:mono(A)|C], KC),
+    [kind(A->B, o, KC)],
+    {format('~@kind(~w, o)~n', [indent,A->B])}
+  *-> { del_indent, format('~@--> lam(~w, ~w) : ~w~n', [indent,X,E,A->B]) }
+  ; { del_indent, format('~@###~n', [indent]), fail }
+  ).
+
+type(X$Y, B, C, KC) -->
+  { format('~@?-- ~w $ ~w : ~w~n~@CO=~w~n~@KC=~w~n', [indent,X,Y,B,indent,C,indent,KC]), add_indent },
+  ( type(X, A->B, C, KC), type(Y, A, C, KC)
+  *-> { del_indent, format('~@--> ~w $ ~w : ~w~n', [indent,X,Y,B]) }
+  ; { del_indent, format('~@###~n', [indent]), fail }
+  ).
+
+type(let(X=E0,E1), T, C, KC) -->
+  { format('~@?-- let(~w : ~w, ~w : ~w)~n~@CO=~w~n~@KC=~w~n', [indent,E0,A,E1,T,indent,C,indent,KC]), add_indent },
+  ( type(E0, A, [X:mono(A)|C], KC),
+    { term_variables(C, Vs) },
+    type(E1, T, [X:poly(A,Vs)|C], KC)
+  *-> { del_indent, format('~@--> let(~w : ~w, ~w : ~w)~n', [indent,E0,A,E1,T]) }
+  ; { del_indent, format('~@###~n', [indent]), fail }
+  ).
+
+inst_type(poly(T0,C), T, KC) --> { copy_term(t(T0,C), t(T1,C)),
+                                   free_variables(T0, Xs0),
+                                   free_variables(T1, Xs1)
+                                 },
+                                 samekinds(KC, Xs0, Xs1),
+                                 { T = T1 }.
+inst_type(mono(T), T, _) --> [].
+
+samekinds(KC, [X|Xs], [Y|Ys]) --> { X \== Y },
+                                  [kind(X, K, KC), kind(Y, K, KC)],
+                                  samekinds(KC, Xs, Ys).
+samekinds(KC, [X|Xs], [X|Ys]) --> samekinds(KC, Xs, Ys).
+samekinds(_, [], []) --> [].
 
 % ?- type(lam(x,lam(y,var(x))), T, []).
 % T = '$VAR'('_A')->'$VAR'('_')->'$VAR'('_A').
@@ -68,9 +81,19 @@ look(V, [V1|Xs]) :-
 % first(K:V, [K:V1|_]) :- unify_with_occurs_check(V, V1).
 % first(K:V, [_|Xs]) :- first(K:V, Xs).
 
-t(E, T, C) :-
+t(E, T, C, KC) :-
   retractall(indent(_)),
-  type(E, T, C),
+
+  phrase(type(E, T, C, KC), Gs0),
+  copy_term(Gs0, Gs),
+  bagof(Ty, member(kind(Ty, _, _), Gs), Tys),
+  free_variables(Tys, Xs),
+  maplist(variablize, Xs),
+  bagof(A:_, member(var(A), Xs), KC1),
+  appendKC(Gs, KC1, Gs1),
+  maplist(call, Gs1),
+  print_term(Gs1, []),
+
   '$skip_list'(_, C, Tail),
   once((
     var(Tail),
@@ -82,7 +105,16 @@ t(E, T, C) :-
   term_variables(t(E,T,C), Vars),
   maplist(=('_'), Vars),
   reset_gensym(x),
-  reset_gensym(a), nl.
+  reset_gensym(a),
+  reset_gensym(b),
+  reset_gensym(t), nl.
+
+variablize(var(X)) :- gensym(t, X).
+
+appendKC([], _, []) :- !.
+appendKC([kind(X, K, KC)|Gs], KC1, [kind(X, K, KC2)|Gs1]) :-
+  append(KC1, KC, KC2),
+  appendKC(Gs, KC1, Gs1).
 
 name_free_vars(Term, Term2, Prefix) :-
   term_variables(Term, Vars),
