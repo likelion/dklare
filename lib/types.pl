@@ -1,48 +1,68 @@
-:- module(types, [ type//4,
-                   op(500, yfx, $) ] ).
+:- module(types, [ infer_type/5,
+                   process/2,
+                   op(500, yfx, $),
+                   op(550, xfy, ->)
+                 ] ).
 
-kind(var(Z), K, KC) :- first(Z:K0, KC), instantiate(K0, K).
-kind(F$G, K, KC) :- kind(F, K0->K, KC), kind(G, K0, KC).
-kind(A->B, o, KC) :- kind(A, o, KC), kind(B, o, KC).
+kind(X, K, KC)    :- look(X:K, KC).
+kind(F$G, K, KC)  :- kind(F, K0->K, KC),
+                     kind(G, K0, KC).
+kind(A->B, o, KC) :- kind(A, o, KC),
+                     kind(B, o, KC).
 
-type(var(X), T, KC, C) --> { first(X:T0, C) }, inst_type(T0, T, KC).
-type(lam(X,E), A->B, KC, C) --> type(E, B, KC, [X:mono(A)|C]), [kind(A->B, o, KC)].
-type(X$Y, B, KC, C) --> type(X, A->B, KC, C), type(Y, A, KC, C).
-type(let(X=E0,E1), T, KC, C) --> type(E0, A, KC, C), type(E1, T, KC, [X:poly(C,A)|C]).
+look(X:T, C) :- atom(X), get_dict(X, C, T).
 
-first(K:V, [K:V1|_]) :- unify_with_occurs_check(V, V1), !.
-first(K:V, [_|Xs]) :- first(K:V, Xs).
+type(X, T, C)            --> { look(X:T0, C) },
+                             inst_type(T0, T1),
+                             { unify_with_occurs_check(T1, T) }.
+type(lam(X,E), A->B, C)  --> type(E, B, C.put(X, mono(A))),
+                             [ kind(A->B, o) ].
+type(X$Y, B, C)          --> type(X, A->B, C),
+                             type(Y, A0, C),
+                             { unify_with_occurs_check(A0, A) }.
+type(let(X=E0,E1), T, C) --> type(E0, A, C),
+                             { term_variables(C, Vs) },
+                             type(E1, T, C.put(X, poly(A,Vs))).
 
-instantiate(mono(T), T) :- !.
-instantiate(poly(C,T0), T) :- copy_term(t(C,T0), t(C,T)).
+inst_type(mono(T), T)    --> [].
+inst_type(poly(T0,V), T) --> { copy_term(t(T0,V), t(T,V)),
+                               term_variables(T0, Xs0),
+                               term_variables(T, Xs)
+                             },
+                             samekinds(Xs0, Xs).
 
-inst_type(poly(C,T0), T, KC) --> { copy_term(t(C,T0), t(C,T1)),
-                                   free_variables(T0, Xs0),
-                                   free_variables(T1, Xs1)
-                                 },
-                                 samekinds(KC, Xs0, Xs1),
-                                 { T = T1 }.
-inst_type(mono(T), T, _) --> [].
+samekinds([], [])         --> [].
+samekinds([X|Xs], [Y|Ys]) --> [ kind(X, K), kind(Y, K) ],
+                              samekinds(Xs, Ys).
 
-samekinds(KC, [X|Xs], [Y|Ys]) --> { X \== Y },
-                                  [kind(X, K, KC), kind(Y, K, KC)],
-                                  samekinds(KC, Xs, Ys).
-samekinds(KC, [X|Xs], [X|Ys]) --> samekinds(KC, Xs, Ys).
-samekinds(_, [], []) --> [].
+infer_type(E, T, C, KC, K) :-
+  phrase(type(E, T, C), CHs),
+  get_types(CHs, Ts),
+  term_variables(Ts, Vs),
+  reset_gensym(t),
+  maplist(variablize, Vs, KC1),
+  dict_create(KC2, _, KC1),
+  K = KC2.put(KC),
+  maplist(check_kind(K), CHs).
 
-variablize(var(X)) :- gensym(t, X).
+get_types([], []).
+get_types([kind(Type,_)|T1], [Type|T2]) :-
+  get_types(T1, T2).
 
-infer_type(KC, C, E, T) :-
-  phrase(type(E, T, KC, C), Gs0),
-  copy_term(Gs0, Gs),
-  bagof(Ty, member(kind(Ty, _, _), Gs), Tys),
-  free_variables(Tys, Xs),
-  maplist(variablize, Xs),
-  bagof(A:_, member(var(A), Xs), KC1),
-  appendKC(Gs, KC1, Gs1),
-  maplist(call, Gs1).
+variablize(X, X-_) :- gensym(t, X).
 
-appendKC([], _, []) :- !.
-appendKC([kind(X, K, KC)|Gs], KC1, [kind(X, K, KC2)|Gs1]) :-
-  append(KC1, KC, KC2),
-  appendKC(Gs, KC1, Gs1).
+check_kind(KC, K) :-
+  call(K, KC).
+
+process(T, K):-
+  KC0 = _{ 'Nat' : o
+         , 'List': o->o
+         },
+  C0 = _{ 'Zero' : mono('Nat')
+        , 'Succ' : mono('Nat'->'Nat')
+        , 'Nil'  : poly('List'$A, [])
+        , 'Cons' : poly(A->'List'$A->'List'$A, [])
+        },
+  infer_type(lam(x,lam(l,'Cons'$x$l)), T, C0, KC0, K).
+  %infer_type('Cons'$'Zero'$('Cons'$'Zero'$'Nil'), T, C0, KC0, K).
+
