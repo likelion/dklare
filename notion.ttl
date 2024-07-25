@@ -1,0 +1,170 @@
+#
+# Copyright 2024 Leonid Mokrushin
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#  http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+@prefix  rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix    n: <http://dklare.org/2024/07/notion#> .
+@prefix     : <http://example.com#> .
+
+## Notion
+
+rdfs:Class
+  a rdfs:Class ;
+  # subClassOf will be used to diffirentiate (multiple inheritance)
+  n:abstraction n:Association ;
+  n:aspect n:Common .
+
+## Attribute
+
+rdf:Property
+  a rdfs:Class ;
+  rdfs:label "Attribute" ;
+  n:abstraction n:Association ;
+  n:aspect n:Common .
+
+n:abstraction
+  a rdf:Property ; # in table Attribute
+  rdfs:label "abstraction" ;
+  rdfs:domain rdfs:Class ; # which notion abstraction belongs to
+  rdfs:range n:Abstraction . # what is the range of this attribute
+
+n:aspect
+  a rdf:Property ;
+  rdfs:label "aspect" ;
+  rdfs:domain rdfs:Class ;
+  rdfs:range n:Aspect .
+
+## Abstraction
+
+n:Abstraction # 64
+  a rdfs:Class ; # in table Notion
+  rdfs:label "Abstraction" ;
+  n:abstraction n:Association ;
+  n:aspect n:Common .
+
+n:Identity
+  a n:Abstraction ; # entity of Abstraction
+  rdfs:label "Identity" .
+
+n:Association
+  a n:Abstraction ;
+  rdfs:label "Association" .
+
+n:Generalization
+  a n:Abstraction ;
+  rdfs:label "Generalization" .
+
+## Aspect
+
+n:Aspect # 65
+  a rdfs:Class ; # in table Notion
+  rdfs:label "Aspect" ;
+  n:abstraction n:Association ;
+  n:aspect n:Common .
+
+n:Common
+  a n:Aspect ;
+  rdfs:label "Common aspect" .
+
+#######################
+
+:Variable
+  a rdfs:Class ;
+  n:intension [ n:aspect n:Common ; # may skip for n:Common
+                n:syntax [ n:parse ( [ "[a-zA-Z][a-zA-Z0-9]*" _:x ] "=" [ :Integer _:i ] ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "#define " _:x "=" _:i ";\n" )
+                                     ]
+                         ]
+              ] .
+
+:Constant
+  a rdfs:Class ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( "true" ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "asm{ mov eax, -1; push eax }" )
+                                     ] ,
+                                     [ n:aspect :Bit ;
+                                       n:text ( "asm{mov eax, 1; push eax}" )
+                                     ]
+                         ] ,
+                         [ n:parse ( "false" ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "asm{ mov eax, 0; push eax }" )
+                                     ]
+                         ]
+              ] .
+
+:Bit
+  a n:Aspect ;
+  rdfs:label "Bit aspect" .
+
+:Logic
+  a rdfs:Class ;
+  rdfs:subClassOf :Variable ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( :Variable ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "asm{ pop ebx; mov eax, [ebx]; push eax }" )
+                                     ]
+                         ] ,
+                         [ n:parse ( "(" :Boolean ")" ) ]
+              ] .
+
+:Negation
+  a rdfs:Class ;
+  rdfs:subClassOf :Constant ,
+                  :Logic ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( "not" :Logic ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "asm{ pop eax; not eax; push eax }" )
+                                     ]
+                         ]
+              ] .
+
+:Conjunction
+  a rdfs:Class ;
+  rdfs:subClassOf :Negation ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( :Negation "and" :Negation ) ;
+                           n:compile [ n:aspect n:Common ;
+                                       n:text ( "asm{ pop eax; pop edx; and eax, edx; push eax }" )
+                                     ]
+                         ]
+              ] .
+
+:Disjunction
+  a rdfs:Class ;
+  rdfs:subClassOf :Conjunction ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( [ :Negation _:a ] "or" [ :Negation _:b ] ) ;
+                           n:semantic [ n:aspect n:Common ;
+                                        n:text ( "not" _:a "or not" _:b )
+                                      ]
+                         ]
+              ] .
+
+:Boolean
+  a rdfs:Class ;
+  rdfs:subClassOf :Disjunction ;
+  n:intension [ n:aspect n:Common ;
+                n:syntax [ n:parse ( [ :Disjunction _:a ] "imp" [ :Disjunction _:b ] ) ;
+                           n:semantic [ n:aspect n:Common ;
+                                        n:text ( "not" _:a "or" _:b )
+                                      ]
+                         ]
+              ] .
