@@ -1,39 +1,44 @@
 :- module(types, [ infer_type/6,
                    process/3,
                    op(500, yfx, $),
-                   op(550, xfy, ->)
+                   op(550, xfy, ~>)
                  ] ).
 
 kind(X, K, KC)    :- look(X:K, KC).
-kind(F$G, K, KC)  :- kind(F, K0->K, KC),
+kind(F$G, K, KC)  :- kind(F, K0~>K, KC),
                      kind(G, K0, KC).
-kind(A->B, o, KC) :- kind(A, o, KC),
+kind(A~>B, o, KC) :- kind(A, o, KC),
                      kind(B, o, KC).
 
-look(X:Y, [X1:Y1|Xs]) :-
-  ( (integer(X))
-  -> (Y = poly(A, []), put_attr(A,types,[num]))
-  ; (float(X))
-  -> (Y = poly(A, []), put_attr(A,types,[fractional]))
-  ; (X == X1)
-  -> unify_with_occurs_check(Y, Y1)
-  ; look(X:Y, Xs)
+look(X:poly(A, []), _) :-
+  integer(X), !,
+  put_attr(A,types,[num]).
+look(X:poly(A, []), _) :-
+  float(X), !,
+  put_attr(A,types,[fractional]).
+look(X:T, [X1:T1|Xs]) :-
+  ( unify_with_occurs_check(X, X1),
+    unify_with_occurs_check(T, T1)
+  -> true
+  ; look(X:T, Xs)
   ).
+
+type(E, T, C) :-
+  call_dcg(type(E, T, C), _, _).
 
 type(var(X), T, C)       --> { look(X:T0, C) },
                              inst_type(T0, T1),
                              { unify_with_occurs_check(T1, T) }.
-type(lam(X,E), A->B, C)  --> type(E, B, [X:mono(A)|C]),
-                             [ kind(A->B, o) ].
-type(X$Y, B, C)          --> type(X, A->B, C),
+type(lam(X,E), A~>B, C)  --> type(E, B, [X:mono(A)|C]),
+                             [ kind(A~>B, o) ].
+type(X$Y, B, C)          --> type(X, A~>B, C),
                              type(Y, A0, C),
-                             { print_term((X$Y => ([A0,A]->B)),[]), nl,
-                               unify_with_occurs_check(A, A0), nl
-                             }.
+                             { unify_with_occurs_check(A, A0) }.
 type(let(X=E0,E1), T, C) --> type(E0, A, C),
                              { term_variables(C, Vs) },
                              type(E1, T, [X:poly(A,Vs)|C]).
 
+inst_type(T, T)          --> { var(T) }, !.
 inst_type(mono(T), T)    --> [].
 inst_type(poly(T0,V), T) --> { copy_term(t(T0,V), t(T,V)),
                                term_variables(T0, Xs0),
@@ -75,16 +80,16 @@ process(T, K, CT):-
         , 'Int'   : o
         , 'Float' : o
         , 'Bool'  : o
-        , 'Num'   : o->o
-        , 'List'  : o->o
-        , 'Maybe' : o->o
+        , 'Num'   : o~>o
+        , 'List'  : o~>o
+        , 'Maybe' : o~>o
         ],
   C0 = [ 'Zero' : mono('Nat')
-       , 'Succ' : mono('Nat'->'Nat')
+       , 'Succ' : mono('Nat'~>'Nat')
        , 'Nil'  : poly('List'$A, [])
-       , 'Cons' : poly(A->'List'$A->'List'$A, [])
+       , 'Cons' : poly(A~>'List'$A~>'List'$A, [])
        , 'None' : poly('Maybe'$B, [])
-       , 'Just' : poly(B->'Maybe'$B, [])
+       , 'Just' : poly(B~>'Maybe'$B, [])
        , 'True' : mono('Bool')
        , 'False' : mono('Bool')
        ],
