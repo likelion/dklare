@@ -9,15 +9,15 @@
      tmember/2,
      tmember_t/3,
      tfilter/3,
-     tpartition/4,
-     unify_with_occurs_check/3
+     tpartition/4
     ]).
 
-/** <module> Reified if, reification library
+/** <module> Reified if, reification library v3
 
 @author Ulrich Neumerkel
+see Indexing dif/2
+U. Neumerkel and S. Kral. https://arxiv.org/abs/1607.01590 [cs.PL]. July 2016.
 */
-
 
 :- meta_predicate
     if_(1, 0, 0),
@@ -116,6 +116,17 @@ ugoal_expansion(if_(If_1, Then_0, Else_0), Goal) :-
       ; dif(X,Y), Elsex_0
       ).
 ugoal_expansion(if_(If_1, Then_0, Else_0), Goal) :-
+   nonvar(If_1), If_1 = dif(X, Y),
+   goal_expanded(call(Then_0), Thenx_0),
+   goal_expanded(call(Else_0), Elsex_0),
+   !,
+   Goal =
+      ( X \= Y -> Thenx_0
+      ; X == Y -> Elsex_0
+      ; X = Y,    Elsex_0
+      ; dif(X,Y), Thenx_0
+      ).
+ugoal_expansion(if_(If_1, Then_0, Else_0), Goal) :-
    subsumes_term((A_1;B_1), If_1),
    (A_1;B_1) = If_1,
    !,
@@ -202,12 +213,7 @@ i_memberd_t([X|Xs], E, T) :-
 tmember(P_2, [X|Xs]) :-
    if_( call(P_2, X), true, tmember(P_2, Xs) ).
 
+tmember_t(_P_2, [], false).
 tmember_t(P_2, [X|Xs], T) :-
    if_( call(P_2, X), T = true, tmember_t(P_2, Xs, T) ).
 
-unify_with_occurs_check(X, Y, Cond) :-
-  (  var(Cond)
-  -> ( unify_with_occurs_check(X, Y) -> Cond = true ; Cond = false )
-  ;  ground(Cond)
-  -> ( Cond = true -> unify_with_occurs_check(X, Y) ; Cond = false -> dif(X, Y) )
-  ).
